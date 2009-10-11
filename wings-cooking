@@ -1,0 +1,46 @@
+#!/usr/bin/perl -w
+use strict;
+
+#
+# Generate a listing of all topic branches that have been merged
+# into the 'pu' branch.
+#
+
+-d '.git' or die "$0: Not a Git repository";
+
+foreach (`git for-each-ref --format='%(refname)' refs/heads`) {
+    s@^refs/heads/@@;
+    next unless m@^\w+/[-_\w]+$@;
+    chomp;
+    my $merge_base = `git merge-base pu $_`;
+    my $id = `git rev-parse --verify $_`;
+    chomp $merge_base;
+    chomp $id;
+    next unless $merge_base eq $id;
+
+    print "$_:\n";
+
+    my $origin = `git rev-parse -q --verify origin/$_`;
+    chomp $origin;
+    my @revs = `git rev-list next..$id`;
+    if ($origin eq '') {
+	print "* NOT PUBLISHED\n";
+    } else {
+	my $url;
+	if (@revs == 1) {
+	    $url = "http://github.com/bjorng/wings/commit/$id";
+	} else {
+	    $url = "http://github.com/bjorng/wings/commits/$_";
+	}
+	print "* $url\n";
+    }
+    my $max = 12;
+    foreach (@revs) {
+	system qq[git --no-pager log -n 1 --format="- %s" $_];
+	if (--$max < 0) {
+	    print ".\n.\n\.\n";
+	    last;
+	}
+    }
+    print "\n";
+}
