@@ -1,0 +1,52 @@
+#!/usr/bin/perl -wi
+use strict;
+
+#
+# Run tools/extract_notes and prepend the notes to the 
+# latest NOTES-* file and commit the changes. If notes
+# in the file already are up-to-date, nothing will be
+# committed.
+#
+# By default, the generated notes will be preceded by
+# --- (next version) ----- header. Use the -v<version>
+# (e.g. -v1.1.15) to instead insert the version number
+# for a release.
+#
+
+my $notes_written;
+
+my $vsn = '(next version)';
+my $file;
+
+while (@ARGV && $ARGV[0] =~ /^-(.*)/) {
+    my $opt = $1;
+    if ($opt =~ /v(.*)/) {
+	$vsn = $1;
+    } else {
+	usage();
+    }
+    shift;
+}
+
+@ARGV == 0 or usage();
+
+@ARGV = ("NOTES-1.1");
+@ARGV = ("NOTES-1.0") unless -f $ARGV[0];
+
+local $/;
+while (<>) {
+    $file = $ARGV;
+    print "--- $vsn ", "-" x (75-length($vsn)), "\n";
+    print `tools/extract_notes`;
+    $notes_written = 1;
+    print;
+}
+my $msg = 'Generate release notes';
+$msg .= " for the $vsn release"
+    unless $vsn =~ /\(/;
+
+system "git commit -m '$msg' $file";
+
+sub usage {
+    die "usage: wings-commit-notes [-v<version>]\n";
+}
