@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# Interactively update 'pu' from topic branches. 'pu' is assumed to
+# be branched out from next.
+#
+# Based on the "pu" script in the Git project.
+#
+
+# Make sure the workspace is clean.
+git update-index --refresh || exit
+case "$(git diff-index --name-status HEAD)" in
+'')	;;
+*)	echo 2>&1 "Local modifications exist."
+	exit 1;;
+esac
+
+HH=`git show-ref --heads | sed -e 's/^[0-9a-f]* refs\/heads\///' \
+    -e '/^master$/d' -e '/^maint$/d' -e '/^pu$/d'`
+echo "$HH"
+while test "$HH"
+do
+	I=0
+	echo "0: done"
+	NHH=
+	for H in $HH
+	do
+		HSHA1=`git rev-parse --verify $H` || continue
+		MB=`git show-branch --merge-base pu $HSHA1`
+		case "$LF$MB$LF" in
+		*"$LF$HSHA1$LF"*) continue ;; # already merged.
+		esac
+		I=$(($I+1))
+		echo -n "$I: "
+		git show-branch $H
+		NHH="${NHH}$H "
+	done
+	case "$I" in
+	0)
+		break ;;
+	esac
+	HH=$NHH
+	echo -n "Merge which ones (0 to finish)? "
+	read ans
+	case "$ans" in
+	'' | 0)
+		break ;;
+	esac
+	I=0
+	UNUSE= USE= USED=
+	for H in $HH
+	do
+		I=$(($I+1))
+		case " $ans " in
+		*' '$I' '*)
+			USE="$USE$H "
+			USED="$USED,$H"
+			;;
+		*)
+			UNUSE="$UNUSE$H "
+			;;
+		esac
+	done
+	USED=`expr "$USED" : ',\(.*\)'`
+	git pull -n . $USE || exit
+	# git merge -n "Merge $USED" pu $USE || exit
+	HH=$UNUSE
+done
