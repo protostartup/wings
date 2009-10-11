@@ -14,6 +14,7 @@ use strict;
 #
 
 my $notes_written;
+my $skip;
 
 my $vsn = '(next version)';
 my $file;
@@ -33,13 +34,26 @@ while (@ARGV && $ARGV[0] =~ /^-(.*)/) {
 @ARGV = ("NOTES-1.1");
 @ARGV = ("NOTES-1.0") unless -f $ARGV[0];
 
-local $/;
 while (<>) {
     $file = $ARGV;
-    print "--- $vsn ", "-" x (75-length($vsn)), "\n";
-    print `tools/extract_notes`;
-    $notes_written = 1;
-    print;
+    unless ($notes_written) {
+	print "--- $vsn ", "-" x (75-length($vsn)), "\n";
+	print `tools/extract_notes`;
+	$notes_written = 1;
+	if (/^---\s+(.*)\s+---/) {
+	    my $version = $1;
+	    if ($version eq '(next version)' ||
+		$version eq $vsn) {
+		$skip = 1;
+		$_ = '';
+	    }
+	}
+    }
+    print unless $skip;
+    if ($skip && /^---\s*\d/) {
+	$skip = 0;
+	print;
+    }
 }
 my $msg = 'Generate release notes';
 $msg .= " for the $vsn release"
