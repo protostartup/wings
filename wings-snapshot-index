@@ -1,0 +1,61 @@
+#!/usr/bin/perl -w
+use strict;
+
+#
+# Usage: wings-snapshot-index file1 file2...
+#
+# Generate an index page for a snapshot. The page will have
+# links to each of the files given as arguments to this script.
+#
+
+my $REPO = "/Users/bjorng/src/wings";
+
+my $title = "Latest Wings Snapshot";
+print "<html>\n";
+print "<head><title>$title</title></head>\n";
+print "<body>\n";
+print "<h1>$title</h1>\n";
+
+print "<p>This snapshot was generated ", scalar(localtime(time)), " CET.\n<p>\n";
+
+foreach (@ARGV) {
+    next if $_ eq 'index.html';
+    print qq[<a href="$_">$_</a><br>\n];
+}
+
+print "<h2>Contents</h2>\n";
+
+my $in_ul = 0;
+open CONTENTS, "cd $REPO; wings-cooking|";
+while (<CONTENTS>) {
+    chomp;
+    next if /^$/;
+    if (m@^([-\w_/]*):$@) {
+	print "<h3>$1</h3>\n";
+	next;
+    }
+    if (/^[*] (http:[^\s]*)/) {
+	$_ = qq[<a href="$1">$1</a>];
+    }
+    if (/^- (.*)/) {
+	my $line = $1;
+	unless ($in_ul) {
+	    $in_ul = 1;
+#	    print "<ul>\n";
+	}
+	print "<li>$line</li>\n";
+	next;
+    }
+    if ($in_ul) {
+	$in_ul = 0;
+#	print "</ul>\n";
+    }
+    print "$_<br>\n";
+}
+close CONTENTS;
+
+print qq[<p><a href="http://sourceforge.net/projects/wings"><img src="http://sflogo.sourceforge.net/sflogo.php?group_id=33028&amp;type=8" width="80" height="15" alt="Get Wings 3D at SourceForge.net. Fast, secure and Free Open Source software downloads" /></a>\n];
+
+print "</body>\n";
+print "</html>\n";
+
