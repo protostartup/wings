@@ -16,7 +16,6 @@ esac
 
 HH=`git show-ref --heads | sed -e 's/^[0-9a-f]* refs\/heads\///' \
     -e '/^master$/d' -e '/^maint$/d' -e '/^pu$/d'`
-echo "$HH"
 while test "$HH"
 do
 	I=0
@@ -61,7 +60,28 @@ do
 		esac
 	done
 	USED=`expr "$USED" : ',\(.*\)'`
+
+	# If the last commit updated the release notes, get rid of it
+	# before we merge anything new to the branch.
+	case $(git diff --name-only HEAD^) in
+	NOTES-1.1)
+		git reset --hard HEAD^
+		;;
+	*)
+		;;
+	esac
 	git pull -n . $USE || exit
 	# git merge -n "Merge $USED" pu $USE || exit
 	HH=$UNUSE
 done
+
+case $(git diff --name-only HEAD^) in
+NOTES-1.1)
+	# There already are generated release notes.
+	;;
+*)
+	# Generate and commit new release notes.
+	wings-commit-notes
+	;;
+esac
+
