@@ -1,0 +1,40 @@
+#!/bin/bash
+
+#
+# Release an already built snapshot. The build result is assumed to
+# be in the current directory. All files in the snapshot, as well as
+# a generated index.html file will be rsynced to the web server.
+#
+
+# The name of the snapshot directory.
+snapshots=snapshots
+#snapshots=special_snapshots
+
+# Destination directory on web server.
+destination=bjorng,wings@web.sourceforge.net:htdocs/
+
+set wings-*.g*.tar.bz2
+case $# in
+    1)
+	rel=`basename $1 .tar.bz2`
+	if test ! -f $rel.tar.bz2; then
+	    echo "$0: No release found"
+	    exit 1
+	fi
+	;;
+    *)
+	echo "$0: More than one release here"
+	exit 1
+	;;
+esac
+
+rm -rf $snapshots
+mkdir -p $snapshots
+mv $rel.* $snapshots
+if test -f $rel-macosx.dmg; then mv $rel-macosx.dmg $snapshots; fi
+if test -f $rel-linux.bzip2.run.gz; then mv $rel-linux.bzip2.run.gz $snapshots; fi
+tar jxf $snapshots/$rel.tar.bz2 '*/NOTES-1.1'
+mv $rel/NOTES-1.1 $snapshots
+rmdir $rel
+(cd $snapshots; wings-snapshot-index * > index.html)
+rsync --delete -avP -e ssh $snapshots $destination
