@@ -1,0 +1,187 @@
+#!/usr/bin/perl -w
+use strict;
+use File::Basename;
+use File::Copy;
+
+#
+# Build a release for Mac, Linux, and Windows at the same time.
+#
+# How to use:
+#
+#    cd /path/to/wings/repository
+#    wings-release all
+#
+# To only build some platforms, list the platforms on the
+# command line. The platforms names are: mac linux win
+#
+
+# Configuration.
+#
+# The computer that this script is run on is supposed to be a Mac.
+# In my setup, the Linux and Windows machines are virtual machines
+# running under Vmware Fusion.
+#
+# SSH keys must have been set up so that this computer can SSH
+# into the Linux and Windows machines, and those machines must
+# also be able to SSH back to this computer to store their build
+# results.
+#
+# The varibables below could be assigned hard-coded names.
+# 
+my $THIS_HOST = `hostname`; chomp $THIS_HOST;
+my $LINUX_HOST = `hostname | sed s/[.]local\$/-suse.local/`; chomp $LINUX_HOST;
+my $WIN_HOST = `hostname | sed s/[.]local\$/-windows.local/`; chomp $WIN_HOST;
+
+# Where the built releases should be placed.
+my $REL_DIR = "$ENV{HOME}/Sites";
+
+# The number of threads to use with in the '-j' option
+# for 'make'.
+my $mac_threads = 3;
+my $linux_threads = 2;
+my $windows_threads = 2;
+#
+# End of configuration.
+#
+
+my $build_mac = 0;
+my $build_win = 0;
+my $build_linux = 0;
+
+#
+# Find out what to build.
+#
+@ARGV > 0 or usage();
+
+if (@ARGV == 1 && $ARGV[0] eq 'all') {
+    $build_mac = $build_win = $build_linux = 1;
+} else {
+    while (@ARGV) {
+	$_ = shift;
+	if ($_ eq 'mac') {
+	    $build_mac = 1;
+	} elsif ($_ eq 'linux') {
+	    $build_linux = 1;
+	} elsif (/^win(dows)?/) {
+	    $build_win = 1;
+	} else {
+	    usage();
+	}
+    }
+}
+
+run("rm wings*.tar.bz2 2>/dev/null");
+run("make dist");
+
+my(@files) = <wings-*.tar.bz2>;
+if (@files == 0) {
+    error("Checkout or bzip creation failed");
+} elsif (@files > 1) {
+    error("More than one *.bz2 file here\n" .
+	  "  (please remove the old ones and re-run this script)");
+}
+
+my($bzip_file) = @files;
+my($basename) = $bzip_file;
+$basename =~ s/\.tar\.bz2$//;
+
+run("mv $bzip_file $REL_DIR");
+
+chdir "$REL_DIR" or error("Failed to cd to $REL_DIR: $!");
+
+#
+# Start the build.
+#
+
+# Mac build on this host.
+do_fork(0,
+	"$THIS_HOST.log",
+	sub {
+	    my $tmproot = "/tmp";
+	    my $workdir = "$tmproot/wings-release.$$";
+	    $ENV{'MACOSX_DEPLOYMENT_TARGET'} = "10.4";
+	    eval {
+		my $started = time;
+		mkdir $workdir;
+		chdir $workdir;
+		unlink "$basename-macosx.dmg";
+		run("tar jxf $REL_DIR/$bzip_file");
+		run("(cd $basename; make macosx -j$mac_threads)");
+		copy("$basename/$basename-macosx.dmg",
+		     "$REL_DIR/$basename-macosx.dmg") or
+			 die "Build failed\n";
+		my $spent = time - $started;
+		print "*** Done in $spent seconds ***\n";
+	    };
+	    chdir $REL_DIR;
+	    run("mv $workdir $ENV{'HOME'}/.Trash");
+	}) if $build_mac;
+
+# Linux build.
+do_fork(1,
+	"$LINUX_HOST.log",
+	sub {
+	    my $started = time;
+	    my $tmproot = "tmp";
+	    my $workdir = "$tmproot/$basename";
+	    run("ssh", "$LINUX_HOST", "mkdir $tmproot");
+	    run("ssh", "$LINUX_HOST", "rm -rf $workdir");
+	    run(qq[cat $bzip_file | ssh $LINUX_HOST "(cd $tmproot; tar jxf -)"]);
+	    run(qq[ssh $LINUX_HOST "(cd $workdir; make unix -j$linux_threads; gzip $basename-linux.bzip2.run; scp $basename-linux.bzip2.run.gz $THIS_HOST:$REL_DIR)"]);
+	    my $spent = time - $started;
+	    print "*** Done in $spent seconds ***\n";
+	}) if $build_linux;
+
+# Windows build.
+do_fork(2,
+	"$WIN_HOST.log",
+	sub {
+	    my $started = time;
+	    my $tmproot = "/tmp";
+	    my $workdir = "$tmproot/$basename";
+	    run("ssh", $WIN_HOST, "rm -rf $workdir");
+	    run(qq[cat $bzip_file | ssh $WIN_HOST "(cd $tmproot; tar jxf -)"]);
+	    run(qq[ssh $WIN_HOST "(. .bash_profile; cd $workdir; make win32 -j$windows_threads; scp $basename.exe $THIS_HOST:$REL_DIR)"]);
+	    my $spent = time - $started;
+	    print "*** Done in $spent seconds ***\n";
+	}) if $build_win;
+
+sub run {
+    print "+ @_\n";
+    system @_;
+}
+
+sub do_fork {
+    my $number = shift;
+    my $log = shift;
+    my $run = shift;
+    unlink $log;
+
+    # The following line may have to be adjusted for a different
+    # screen size. This line is safe to be removed (but then you will
+    # have to look in the log files to know when the build has
+    # finished).
+    system "touch $log; xterm -geometry 100x22+0+" . (320*$number) .
+	" -T $log -e tail -f $log &";
+
+    my $ret = fork();
+    if (!defined($ret)) {
+	error("Failed to fork child process: $!\n");
+    } elsif ($ret == 0) {
+	# Child
+	open STDOUT, ">$log";
+	open STDERR, ">$log";
+	&$run();
+	exit 0;
+    }
+}
+
+sub usage {
+    die "usage: " . basename($0) . " version all|[mac|linux|win]\n";
+}
+
+sub error {
+    my $error = shift;
+
+    die basename($0), ": ", $error, "\n";
+}
