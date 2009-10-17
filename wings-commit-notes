@@ -10,7 +10,7 @@ use strict;
 # By default, the generated notes will be preceded by
 # --- (next version) ----- header. Use the -v<version>
 # (e.g. -v1.1.15) to instead insert the version number
-# for a release.
+# for a release and to also create v<version> tag.
 #
 
 my $notes_written;
@@ -18,11 +18,13 @@ my $skip;
 
 my $vsn = '(next version)';
 my $file;
+my $tag;
 
 while (@ARGV && $ARGV[0] =~ /^-(.*)/) {
     my $opt = $1;
     if ($opt =~ /v(.*)/) {
 	$vsn = $1;
+	$tag = "v$vsn";
     } else {
 	usage();
     }
@@ -34,11 +36,13 @@ while (@ARGV && $ARGV[0] =~ /^-(.*)/) {
 @ARGV = ("NOTES-1.1");
 @ARGV = ("NOTES-1.0") unless -f $ARGV[0];
 
+my $notes;
 while (<>) {
     $file = $ARGV;
     unless ($notes_written) {
 	print "--- $vsn ", "-" x (75-length($vsn)), "\n";
-	print `tools/extract_notes`;
+	$notes = `tools/extract_notes`;
+	print $notes;
 	$notes_written = 1;
 	if (/^---\s+(.*)\s+---/) {
 	    my $version = $1;
@@ -60,6 +64,11 @@ $msg .= " for the $vsn release"
     unless $vsn =~ /\(/;
 
 system "git commit -m '$msg' $file";
+
+if (defined $tag) {
+    my $msg = "The $vsn release\n\n" . $notes;
+    system "git", "tag", "-a", "-m", $msg, $tag;
+}
 
 sub usage {
     die "usage: wings-commit-notes [-v<version>]\n";
