@@ -2404,9 +2404,9 @@ draw_tweak_menu_items([{Name,{_,{Mode,_}},Help,Bound}|Menu], Y, #tw{lh=Lh, w=W, 
     wings_wm:message(Help),
     draw_tweak_menu_items(Menu, Ly, Tw);
 draw_tweak_menu_items([{Name,{_,{Mode,_}},_,_}|Menu], Y, #tw{lh=Lh, w=W, mode=Mode}=Tw) ->
-    {R,G,B,A} = wings_pref:get_value(menu_color),
+    {R,G,B} = wings_pref:get_value(menu_hilite),
     {X1,Y1,X2,Y2} = {?CHAR_WIDTH - 1, Y + 1, W - ?CHAR_WIDTH + 1, Y-Lh+1},
-    wings_io:gradient_border(X1-1, Y1, X2-X1, Y2-Y1, {R*0.8,G*0.8,B*0.8,A}),
+    wings_io:gradient_border(X1-1, Y1, X2-X1, Y2-Y1, {R*0.8,G*0.8,B*0.8}),
     wings_io:set_color(wings_pref:get_value(menu_hilited_text)),
     wings_io:text_at(?CHAR_WIDTH, Y - 2, Name),
     Ly = Y + Lh,
@@ -2486,9 +2486,9 @@ draw_tweak_menu_items([{Name,Cmd,Help,_}|Menu], Y, #tw{lh=Lh, w=W, current={_,Cm
     draw_tweak_menu_items(Menu, Ly, Tw);
 
 draw_tweak_menu_items([{Name,Cmd,_,_}|Menu], Y, #tw{lh=Lh, w=W, mode={_,Cmd,_}}=Tw) ->
-    {R,G,B,A} = wings_pref:get_value(menu_color),
+    {R,G,B} = wings_pref:get_value(menu_hilite),
     {X1,Y1,X2,Y2} = {?CHAR_WIDTH - 1, Y + 1, W - ?CHAR_WIDTH + 1, Y-Lh+1},
-    wings_io:gradient_border(X1-1, Y1, X2-X1, Y2-Y1, {R*0.8,G*0.8,B*0.8,A}),
+    wings_io:gradient_border(X1-1, Y1, X2-X1, Y2-Y1, {R*0.8,G*0.8,B*0.8}),
     wings_io:set_color(wings_pref:get_value(menu_hilited_text)),
     wings_io:text_at(?CHAR_WIDTH, Y - 2, Name),
     Ly = Y + Lh,
