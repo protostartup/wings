@@ -66,6 +66,7 @@ init() ->
     wings_pref:set_default(tweak_click_speed,200000),
     wings_pref:set_default(tweak_mag_adj_sensitivity,0.01),
     wings_pref:set_default(tweak_sb_clears_constraints,true),
+    wings_pref:set_default(tweak_magnet_colour,{0.0, 0.0, 1.0, 0.06}),
 
     %% Delete Old Prefs
     wings_pref:delete_value(tweak_help),
@@ -413,7 +414,7 @@ handle_magnet_event(#keyboard{}=Ev,#tweak{st=St}=T) ->
         _ ->
             end_magnet_event(Ev,T)
     end;
-handle_magnet_event(#mousebutton{button=B}=Ev,#tweak{ox=X,oy=Y}=T) when B =< 3 ->
+handle_magnet_event(#mousebutton{}=Ev,#tweak{ox=X,oy=Y}=T) ->
     end_magnet_event(Ev#mousebutton{x=X,y=Y},T);
 handle_magnet_event(#mousemotion{},T) ->
     end_magnet_event(T);
@@ -1222,7 +1223,7 @@ draw_magnet(#tweak{magnet=true, mag_rad=R}) ->
         gl:enable(?GL_BLEND),
         gl:blendFunc(?GL_SRC_ALPHA, ?GL_ONE_MINUS_SRC_ALPHA),
         wings_view:load_matrices(false),
-        gl:color4f(0, 0, 1, 0.06),
+        wings_io:set_color(wings_pref:get_value(tweak_magnet_colour)),
         draw_magnet_1(D, R),
         gl:popAttrib()
     end, []);
@@ -1237,7 +1238,7 @@ draw_magnet_1(#dlo{src_sel={Mode,Els},src_we=We,mirror=Mtx,drag=#drag{mm=Side}},
     {X,Y,Z} = wings_vertex:center(Vs, We),
     gl:translatef(X, Y, Z),
     Obj = glu:newQuadric(),
-    glu:sphere(Obj, R, 20, 20),
+    glu:sphere(Obj, R, 40, 40),
     glu:deleteQuadric(Obj);
 
 draw_magnet_1(_, _) -> [].
@@ -1769,7 +1770,9 @@ tweak_options_dialog(St) ->
        [{title,?__(3,"Click Speed")}]},
        {hframe,[{slider,{text,MagAdj,[{key,tweak_mag_adj_sensitivity},{range,{0.1,2.0}}]}}],
        [{title,?__(5,"Magnet Adjust Sensitivity")}]},
-       {?__(6,"Spacebar Clears Axis Constraints"),tweak_sb_clears_constraints}
+       {?__(6,"Spacebar Clears Axis Constraints"),tweak_sb_clears_constraints},
+       separator,
+       {label_column,[{color,?__(7,"Magnet Radius Display Colour"),tweak_magnet_colour}]}
       ]}],
     PrefQs = [{Lbl, make_query(Ps)} || {Lbl, Ps} <- Menu],
     wings_ask:dialog(true, ?__(4,"Tweak Preferences"), PrefQs,
@@ -1779,11 +1782,14 @@ make_query([_|_]=List)	->
     [make_query(El) || El <- List];
 make_query({[_|_]=Str,Key}) ->
     case wings_pref:get_value(Key) of
-    Def when Def == true; Def == false ->
+    Def when Def =:= true; Def =:= false ->
         {Str,Def,[{key,Key}]};
     Def ->
         {Str,{text,Def,[{key,Key}]}}
     end;
+make_query({color,[_|_]=Str,Key}) ->
+    Def = wings_pref:get_value(Key),
+    {Str,{color,Def,[{key,Key}]}};
 make_query({menu,List,Key}) ->
     Def = wings_pref:get_value(Key),
     {menu,List,Def,[{key,Key}]};
