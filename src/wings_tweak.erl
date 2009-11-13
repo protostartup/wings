@@ -67,6 +67,7 @@ init() ->
     wings_pref:set_default(tweak_mag_adj_sensitivity,0.01),
     wings_pref:set_default(tweak_sb_clears_constraints,true),
     wings_pref:set_default(tweak_magnet_colour,{0.0, 0.0, 1.0, 0.06}),
+    wings_pref:set_default(tweak_geo_point, none),
 
     %% Delete Old Prefs
     wings_pref:delete_value(tweak_help),
@@ -177,10 +178,11 @@ handle_tweak_event_1(#tweak{mode=select, ox=X, oy=Y, st=St}) ->
     wings_pick:paint_pick(X, Y, St);
 
 %% Tweak Drag
-handle_tweak_event_1(#tweak{ox=X, oy=Y, st=St0}=T0) ->
+handle_tweak_event_1(#tweak{ox=X, oy=Y, st=#st{sel=Sel}=St0}=T0) ->
     {GX,GY} = wings_wm:local2global(X, Y),
     case wings_pick:do_pick(X,Y,St0) of
-      {add, {Id,Elem,_}=What, St} ->
+      {add, {Id,Elem,_}=What, St} when Sel =:= [] ->
+        from_element_point(X,Y,St0),
         IdElem = {Id,gb_sets:singleton(Elem)},
         wings_wm:grab_focus(),
         wings_io:grab(),
@@ -188,20 +190,24 @@ handle_tweak_event_1(#tweak{ox=X, oy=Y, st=St0}=T0) ->
         do_tweak_0(0.0, 0.0, 0.0, 0.0, {move,screen}),
         T = T0#tweak{id={add,IdElem},ox=GX,oy=GY,cx=0,cy=0},
         {seq,push,update_tweak_handler(T)};
-      {delete, {Id,Elem,_}=What, _} ->
+      {Pick, {Id,Elem,_}=What, _} ->
+        from_element_point(X,Y,St0),
         IdElem = {Id,gb_sets:singleton(Elem)},
         wings_wm:grab_focus(),
         wings_io:grab(),
         begin_drag(What, St0, T0),
         do_tweak_0(0.0, 0.0, 0.0, 0.0, {move,screen}),
-        T = T0#tweak{id={del,IdElem},ox=GX,oy=GY,cx=0,cy=0},
+        T = T0#tweak{id={Pick,IdElem},ox=GX,oy=GY,cx=0,cy=0},
         {seq,push,update_tweak_handler(T)};
       none -> next
     end.
 
 %% Event handler for active tweak tools
 update_tweak_handler(T) ->
-    wings_draw:update_sel_dlist(),
+    case wings_pref:get_value(hide_sel_while_dragging) of
+      true -> ok;
+      false -> wings_draw:update_sel_dlist()
+    end,
     wings_wm:dirty(),
     tweak_drag_no_redraw(T).
 
@@ -423,7 +429,10 @@ handle_magnet_event(_,_) ->
 
 %% In-drag Event handler for magnet resize
 update_in_drag_radius_handler(T) ->
-    wings_draw:update_sel_dlist(),
+    case wings_pref:get_value(hide_sel_while_dragging) of
+      true -> ok;
+      false -> wings_draw:update_sel_dlist()
+    end,
     wings_wm:dirty(),
     in_drag_radius_no_redraw(T).
 
@@ -574,10 +583,10 @@ end_drag(#tweak{mode=Mode, id={P,{OrigId,El}}, ox=X,oy=Y,cx=Cx,cy=Cy, st=St0}) -
     pop.
 
 %% end single click pick
-end_pick(del, Id, _, D, #st{selmode=body,sel=Sel0}=St) ->
+end_pick(delete, Id, _, D, #st{selmode=body,sel=Sel0}=St) ->
     Sel = lists:sort(orddict:erase(Id,Sel0)),
     {D#dlo{vs=none,sel=none,drag=none}, St#st{selmode=body,sel=Sel,sh=false}};
-end_pick(del, Id, El0, #dlo{src_sel={Mode,_}}=D, #st{sel=Sel0}=St) ->
+end_pick(delete, Id, El0, #dlo{src_sel={Mode,_}}=D, #st{sel=Sel0}=St) ->
     El1 = orddict:fetch(Id,Sel0),
     El = gb_sets:subtract(El1,El0),
     Sel = case gb_sets:is_empty(El) of
@@ -596,8 +605,9 @@ end_pick(_, Id, El0, #dlo{src_sel={Mode,_}}=D, #st{sel=Sel0}=St) ->
     end,
     Sel = lists:sort(orddict:store(Id,El,Sel0)),
     {D#dlo{vs=none,sel=none,drag=none}, St#st{selmode=Mode,sel=Sel,sh=false}};
-end_pick(_,_,_,D,St) -> {D,St}.
-
+end_pick(_,Id,El,D,#st{sel=Sel0}=St) ->
+    Sel = lists:sort([{Id, El}|Sel0]),
+    {D#dlo{vs=none,sel=none,drag=none}, St#st{sel=Sel,sh=false}}.
 %% update
 end_drag(update, #dlo{src_sel={Mode,Sel}, src_we=#we{id=Id},drag={matrix,_,Matrix,_}}=D,
         #st{shapes=Shs0}=St0) ->
@@ -691,7 +701,6 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,pos0=Orig,pst=none,  %% pst =:= none
     end,
     {Xs,Ys,Zs} = obj_to_screen(Matrices, Pos0),
     TweakPos = screen_to_obj(Matrices, {Xs+DX,Ys-DY,Zs}),
-
     {Dir,Pos} = case Type of
         x -> {axis,{1.0,0.0,0.0}};
         y -> {axis,{0.0,1.0,0.0}};
@@ -739,7 +748,13 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,pos0=Orig,pst=none,  %% pst =:= none
     %% Check for active Point ops
     VecData = {_, AxisPoint} = case wings_pref:get_value(tweak_point) of
        none -> {PVec, {PrimeVec, Orig}};
-       from_cursor -> {e3d_vec:neg(PVec), {PrimeVec, CursorPos}}
+       from_cursor -> {e3d_vec:neg(PVec), {PrimeVec, CursorPos}};
+       from_element ->
+           {Point,_} = wings_pref:get_value(tweak_geo_point),
+           {e3d_vec:neg(PVec), {PrimeVec, Point}};
+       from_default ->
+           {DefPoint,_} = wings_pref:get_value(default_axis),
+           {e3d_vec:neg(PVec), {PrimeVec, DefPoint}}
     end,
 
     Dist = dist_along_vector(Orig, TweakPos, PVec)/2,
@@ -1138,6 +1153,26 @@ magnet_tweak(#mag{orig=Orig,vs=Vs}=Mag, Pos) ->
          end, [], Vs),
     {Vtab,Mag#mag{vtab=Vtab}}.
 
+%% Get center point from closest element to cursor and store it for
+%% From Element constraints. 
+from_element_point(X ,Y, #st{shapes=Shs}=St0) ->
+    Stp = St0#st{selmode=face,sel=[],sh=true},
+    GeomPoint = wings_pick:raw_pick(X,Y,Stp),
+    {Selmode, _, {IdP, ElemP}} = GeomPoint,
+    We = gb_trees:get(IdP, Shs),
+    Point = point_center(Selmode, ElemP, We),
+    wings_pref:set_value(tweak_geo_point, {Point,GeomPoint}).
+
+point_center(vertex, V, #we{vp=Vtab}) ->
+    array:get(V, Vtab);
+point_center(edge, E, #we{es=Etab,vp=Vtab}) ->
+    #edge{vs=Va,ve=Vb} = array:get(E, Etab),
+    PosA = array:get(Va, Vtab),
+    PosB = array:get(Vb, Vtab),
+    e3d_vec:average(PosA, PosB);
+point_center(face, F, We) ->
+    wings_face:center(F, We).
+
 %% Magnet
 %% Setup magnet in the middle of a tweak op
 setup_magnet(#tweak{mode=Mode, cx=X, cy=Y}=T) ->
@@ -1442,9 +1477,22 @@ show_cursor(_, #dlo{src_we=#we{id=Id}, drag={matrix,Pos,_,_}}) ->
     {X0,Y0,_} = obj_to_screen(Matrices, Pos),
     show_cursor_1(X0,Y0);
 show_cursor(El, #dlo{src_sel={Mode,_},src_we=#we{id=Id}=We,drag=#drag{mm=MM}}) ->
-    Vs0 = sel_to_vs(Mode, gb_sets:to_list(El), We),
-    Center = wings_vertex:center(Vs0, We),
+    Vs0 = case catch sel_to_vs(Mode, gb_sets:to_list(El), We) of
+        VsList when is_list(VsList) -> VsList;
+        _ -> crash_the_next_check_too
+    end,
+    Center = case catch wings_vertex:center(Vs0, We) of
+        {X,Y,Z}=C when C =:= {float(X), float(Y), float(Z)} -> C;
+        _ ->
+          {C,_} = wings_pref:get_value(tweak_geo_point),
+          C
+    end,
     Matrices = wings_u:get_matrices(Id, MM),
+    {X0,Y0,_} = obj_to_screen(Matrices, Center),
+    show_cursor_1(X0,Y0);
+show_cursor(_,_) ->
+    {Center,{_,Mir,{Id,_}}} = wings_pref:get_value(tweak_geo_point),
+    Matrices = wings_u:get_matrices(Id, Mir),
     {X0,Y0,_} = obj_to_screen(Matrices, Center),
     show_cursor_1(X0,Y0).
 
@@ -1571,6 +1619,10 @@ constraints_menu() ->
     separator,
      {?__(24,"From Cursor"),from_cursor,?__(25,"Set point from which to Scale using the mouse cursor."),
       crossmark(TwPt =:= from_cursor)},
+     {?__(27,"From Element"),from_element,?__(28,"Set point from which to Scale using the point marker."),
+      crossmark(TwPt =:= from_element)},
+     {?__(29,"From Default Point"),from_default,?__(30,"Scale using the Default Point."),
+      crossmark(TwPt =:= from_default)},
     separator,
      {?__(22,"Clear Constraints"),clear,?__(23,"Clear all locked axes.")}].
 
@@ -2177,7 +2229,7 @@ set_axis_lock(clear) ->
     wings_pref:set_value(tweak_xyz,[false,false,false]),
     wings_pref:set_value(tweak_point,none),
     wings_pref:set_value(tweak_axis, screen);
-set_axis_lock(from_cursor=P) ->
+set_axis_lock(P) when P =:= from_cursor; P =:= from_element; P =:= from_default ->
     Pref = case wings_pref:get_value(tweak_point) of
       P -> none;
       _ -> P

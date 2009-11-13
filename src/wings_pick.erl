@@ -13,7 +13,7 @@
 
 -module(wings_pick).
 -export([event/2,event/3,hilite_event/3, hilite_event/4]).
--export([do_pick/3]).
+-export([do_pick/3,raw_pick/3]).
 -export([marquee_pick/3,paint_pick/3]).
 
 -define(NEED_OPENGL, 1).
@@ -135,31 +135,85 @@ handle_hilite_event(redraw, #hl{redraw=#st{}=St}) ->
 handle_hilite_event(redraw, #hl{redraw=Redraw}) ->
     Redraw(),
     keep;
-handle_hilite_event(#mousemotion{x=X,y=Y}, HL) ->
-    #hl{prev=PrevHit,always_dirty=Dirty,st=St,filter=Accept}=HL,
+handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev={_,_}=PH}=HL0) ->
+    #hl{always_dirty=Dirty,st=St,filter=Accept}=HL0,
+    case {raw_pick(X, Y, St),tweak_hilite(X,Y,St)} of
+	PH when Dirty ->
+	    wings_wm:dirty(),
+	    get_hilite_event(HL0);
+	PH ->
+	    wings_draw:refresh_dlists(St),
+	    get_hilite_event(HL0);
+	{none,none} ->
+	    wings_wm:dirty(),
+	    insert_hilite_dl(none, St),
+	    wings_draw:refresh_dlists(St),
+	    get_hilite_event(HL0#hl{prev=none});
+	{SelHit,PointHit}=Hit ->
+	    case accept_hl(Accept, PointHit) of
+		true ->
+		    wings_wm:dirty(),
+		    {Active, _} = wings_pref:get_value(tweak_prefs),
+		    case wings_pref:get_value(tweak_point) of
+		      from_element when Active =:= active ->
+		        insert_two_hilites_dl(SelHit, PointHit, St),
+		        HL = HL0#hl{prev=Hit};
+		      _ ->
+		        insert_hilite_dl(SelHit, St),
+		        HL = HL0#hl{prev=SelHit}
+		    end,
+		    wings_draw:refresh_dlists(St),
+		    get_hilite_event(HL);
+		false ->
+		    wings_wm:dirty(),
+		    insert_hilite_dl(none, St),
+		    wings_draw:refresh_dlists(St),
+		    get_hilite_event(HL0#hl{prev=none})
+		end
+    end;
+handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev=PrevHit}=HL0) ->
+    #hl{always_dirty=Dirty,st=St,filter=Accept}=HL0,
     case raw_pick(X, Y, St) of
 	PrevHit when Dirty ->
 	    wings_wm:dirty(),
-	    get_hilite_event(HL);
+	    get_hilite_event(HL0);
 	PrevHit ->
+	    {Active, _} = wings_pref:get_value(tweak_prefs),
+	    case wings_pref:get_value(tweak_point) of
+	      from_element when Active =:= active ->
+	        Hit = tweak_hilite(X,Y,St),
+	        wings_wm:dirty(),
+	        insert_two_hilites_dl(PrevHit, Hit, St),
+	        HL = HL0#hl{prev={PrevHit,Hit}};
+	      _ ->
+	        HL = HL0
+	    end,
+	    wings_draw:refresh_dlists(St),
 	    get_hilite_event(HL);
 	none ->
 	    wings_wm:dirty(),
 	    insert_hilite_dl(none, St),
 	    wings_draw:refresh_dlists(St),
-	    get_hilite_event(HL#hl{prev=none});
+	    get_hilite_event(HL0#hl{prev=none});
 	Hit ->
 	    case accept_hl(Accept, Hit) of
-		true ->
-		    wings_wm:dirty(),
-		    insert_hilite_dl(Hit, St),
-		    wings_draw:refresh_dlists(St),
-		    get_hilite_event(HL#hl{prev=Hit});
-		false ->
-		    wings_wm:dirty(),
-		    insert_hilite_dl(none, St),
-		    wings_draw:refresh_dlists(St),
-		    get_hilite_event(HL#hl{prev=none})
+	    true ->
+	        wings_wm:dirty(),
+	        {Active, _} = wings_pref:get_value(tweak_prefs),
+	        case wings_pref:get_value(tweak_point) of
+	          from_element when Active =:= active ->
+	            Hit0 = tweak_hilite(X, Y, St),
+	            insert_two_hilites_dl(Hit, Hit0, St);
+	          _ ->
+	            insert_hilite_dl(Hit, St)
+	        end,
+	        wings_draw:refresh_dlists(St),
+	        get_hilite_event(HL0#hl{prev=Hit});
+	    false ->
+	        wings_wm:dirty(),
+	        insert_hilite_dl(none, St),
+	        wings_draw:refresh_dlists(St),
+	        get_hilite_event(HL0#hl{prev=none})
 	    end
     end;
 handle_hilite_event(init_opengl, #hl{st=St}) ->
@@ -167,6 +221,10 @@ handle_hilite_event(init_opengl, #hl{st=St}) ->
 handle_hilite_event(_, _) ->
     insert_hilite_dl(none, none),
     next.
+
+tweak_hilite(X, Y, St) ->
+    Stp = St#st{selmode=face,sel=[],sh=true},
+    raw_pick(X, Y, Stp).
 
 accept_hl(Fun, Hit) when is_function(Fun) ->
     Fun(Hit);
@@ -195,6 +253,51 @@ insert_hilite_dl_1(#dlo{src_we=#we{id=Id}}=D, {Mode,_,{Id,Item}=Hit}, St) ->
 insert_hilite_dl_1(#dlo{hilite=none}=D, _, _) -> D;
 insert_hilite_dl_1(D, _, _) -> D#dlo{hilite=none}.
 
+insert_two_hilites_dl(Hit, Hit0, St) ->
+    wings_dl:map(fun(D, _) ->
+			 insert_two_hilites_dl_1(D, Hit, Hit0, St)
+			end, []).
+
+insert_two_hilites_dl_1(#dlo{src_we=We}=D, _, _, _) when ?IS_LIGHT(We) -> D;
+insert_two_hilites_dl_1(#dlo{src_we=#we{id=Id}=We}=D, {Mode,_,{Id,Item}=Hit},
+  {Mode0,_,{Id,Item0}}, St) ->
+    List = gl:genLists(1),
+    gl:newList(List, ?GL_COMPILE),
+    hilite_color(Hit, St),
+    {Center,Normal} = point_center(Mode0, Item0, We),
+	case wings_wm:lookup_prop(select_backface) of
+	{value,true} ->
+	    gl:disable(?GL_CULL_FACE),
+	    hilit_draw_sel(Mode, Item, D),
+	    draw_point_sel(Center, Normal),
+	    gl:enable(?GL_CULL_FACE);
+	_ ->
+	    hilit_draw_sel(Mode, Item, D),
+	    draw_point_sel(Center, Normal)
+    end,
+    gl:endList(),
+    D#dlo{hilite=List};
+insert_two_hilites_dl_1(#dlo{hilite=none}=D, _, _, _) -> D;
+insert_two_hilites_dl_1(D, _, _, _) -> D#dlo{hilite=none}.
+
+point_center(vertex, V, #we{vp=Vtab}=We) ->
+    C = array:get(V, Vtab),
+    N = wings_vertex:normal(V, We),
+    {C, N};
+point_center(edge, E, #we{es=Etab,vp=Vtab}=We) ->
+    #edge{vs=Va, ve=Vb, lf=LF, rf=RF} = array:get(E, Etab),
+    PosA = array:get(Va, Vtab),
+    PosB = array:get(Vb, Vtab),
+    C = e3d_vec:average(PosA, PosB),
+    LN = wings_face:normal(LF,We),
+    RN = wings_face:normal(RF,We),
+    N = e3d_vec:average(LN, RN),
+    {C, N};
+point_center(face, F, We) ->
+    C = wings_face:center(F, We),
+    N = wings_face:normal(F, We),
+    {C, N}.
+
 hilite_color({Id,Item}, #st{sel=Sel}) ->
     Key = case keyfind(Id, 1, Sel) of
 	      false -> unselected_hlite;
@@ -205,6 +308,17 @@ hilite_color({Id,Item}, #st{sel=Sel}) ->
 		  end
 	  end,
     gl:color3fv(wings_pref:get_value(Key)).
+
+draw_point_sel(Center, Normal) ->
+    {Cx,Cy,Cz} = Center,
+    {Vx,Vy,Vz} = e3d_vec:add_prod(Center, Normal, 0.2),
+    Colour = gl:color3fv(wings_pref:get_value(active_vector_color)),
+    gl:lineWidth(wings_pref:get_value(selected_edge_width)+2),
+    gl:'begin'(?GL_LINES),
+    Colour,
+    gl:vertex3fv({Cx,Cy,Cz}),
+    gl:vertex3fv({Vx,Vy,Vz}),
+    gl:'end'().
 
 hilit_draw_sel(vertex, V, #dlo{src_we=#we{vp=Vtab}}) ->
     gl:pointSize(wings_pref:get_value(selected_vertex_size)),
