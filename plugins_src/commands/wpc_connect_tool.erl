@@ -55,6 +55,7 @@ command({tools,connect}, St0) ->
     wings_draw:refresh_dlists(St),
     C = #cs{ost=St0, st=St},
     help(C),
+    wings_tweak:set_axis_lock(hilite_toggle),
     {seq,push,update_connect_handler(C)};
 command(_, _) -> next.
 
@@ -144,6 +145,7 @@ handle_connect_event1({current_state,St}=Ev, C) ->
 	    wings_draw:refresh_dlists(St),
 	    update_connect_handler(C#cs{st=St});
 	true ->
+	    wings_tweak:set_axis_lock(hilite_toggle),
 	    wings_wm:later(Ev),
 	    wings:unregister_postdraw_hook(geom,?MODULE),
 	    pop
@@ -173,6 +175,7 @@ handle_connect_event1({new_state,St}=Ev, C) ->
 	    wings_draw:refresh_dlists(St),
 	    update_connect_handler(C#cs{st=St});
 	true ->
+	    wings_tweak:set_axis_lock(hilite_toggle),
 	    wings_wm:later(Ev),
 	    wings:unregister_postdraw_hook(geom,?MODULE),
 	    pop
@@ -231,6 +234,7 @@ undo_refresh(St0,C0) ->
     update_connect_handler(C).
 
 exit_connect(#cs{ost=St,st=#st{shapes=Shs,views=Views}}) ->
+    wings_tweak:set_axis_lock(hilite_toggle),
     wings:unregister_postdraw_hook(geom, ?MODULE),
     wings_wm:later({new_state,St#st{shapes=Shs,views=Views}}),
     pop.

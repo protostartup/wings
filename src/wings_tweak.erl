@@ -15,6 +15,7 @@
 -export([init/0,command/2]).
 -export([tweak_event/2,menu/2,tweak_buttons/0]).
 -export([window/1,window/2,mag_window/1,mag_window/2,axis_window/1,axis_window/2]).
+-export([set_axis_lock/1]).
 -define(NEED_OPENGL, 1).
 -define(NEED_ESDL, 1).
 
@@ -751,25 +752,28 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,pos0=Orig,pst=none,  %% pst =:= none
       false -> V2
     end,
 
-    PrimeVec = if
-        Dir =:= user -> PVec;
-        Dir =:= uniform -> PVec;
-        true -> Pos
+    TweakPointOpType = wings_pref:get_value(tweak_point),
+    {{Axis,Point},_} = wings_pref:get_value(tweak_geo_point),
+
+    PrimeVec = case Dir of
+        user when TweakPointOpType =:= from_element -> Axis;
+        user -> PVec;
+        uniform -> PVec;
+        _other -> Pos
     end,
 
     %% Check for active Point ops
-    VecData = {_, AxisPoint} = case wings_pref:get_value(tweak_point) of
+    VecData = {DistVec, AxisPoint} = case TweakPointOpType of
        none -> {PVec, {PrimeVec, Orig}};
        from_cursor -> {e3d_vec:neg(PVec), {PrimeVec, CursorPos}};
        from_element ->
-           {Point,_} = wings_pref:get_value(tweak_geo_point),
            {e3d_vec:neg(PVec), {PrimeVec, Point}};
        from_default ->
            {DefPoint,_} = wings_pref:get_value(default_axis),
            {e3d_vec:neg(PVec), {PrimeVec, DefPoint}}
     end,
 
-    Dist = dist_along_vector(Orig, TweakPos, PVec)/2,
+    Dist = dist_along_vector(Orig, TweakPos, DistVec)/2,
 
     {Vtab,Mag} = case Dir of
         radial -> tweak_scale_radial(Dist, AxisPoint, Mag0);
@@ -790,8 +794,8 @@ do_tweak(#dlo{drag=#drag{pos=Pos0,pos0=Orig,pst={Type,Dir,PrimeVec},
     end,
     {Xs,Ys,Zs} = obj_to_screen(Matrices, Pos0),
     TweakPos = screen_to_obj(Matrices, {Xs+DX,Ys-DY,Zs}),
-    {PVec,AxisPoint} = PrimeVec,
-    Dist = dist_along_vector(Orig, TweakPos, PVec)/2,
+    {DistVec,AxisPoint} = PrimeVec,
+    Dist = dist_along_vector(Orig, TweakPos, DistVec)/2,
     {Vtab,Mag} = case Dir of
         radial -> tweak_scale_radial(Dist, AxisPoint, Mag0);
         uniform -> tweak_scale_uniform(Dist, AxisPoint, Mag0);
@@ -1172,18 +1176,26 @@ from_element_point(X ,Y, #st{shapes=Shs}=St0) ->
     GeomPoint = wings_pick:raw_pick(X,Y,Stp),
     {Selmode, _, {IdP, ElemP}} = GeomPoint,
     We = gb_trees:get(IdP, Shs),
-    Point = point_center(Selmode, ElemP, We),
-    wings_pref:set_value(tweak_geo_point, {Point,GeomPoint}).
+    AxisPoint  = point_center(Selmode, ElemP, We),
+    wings_pref:set_value(tweak_geo_point, {AxisPoint,GeomPoint}).
 
-point_center(vertex, V, #we{vp=Vtab}) ->
-    array:get(V, Vtab);
-point_center(edge, E, #we{es=Etab,vp=Vtab}) ->
-    #edge{vs=Va,ve=Vb} = array:get(E, Etab),
+point_center(vertex, V, #we{vp=Vtab}=We) ->
+    Normal = wings_vertex:normal(V,We),
+    Pos = array:get(V, Vtab),
+    {Normal, Pos};
+point_center(edge, E, #we{es=Etab,vp=Vtab}=We) ->
+    #edge{vs=Va,ve=Vb,lf=Lf,rf=Rf} = array:get(E, Etab),
     PosA = array:get(Va, Vtab),
     PosB = array:get(Vb, Vtab),
-    e3d_vec:average(PosA, PosB);
+    Pos = e3d_vec:average(PosA, PosB),
+    FaceNormL = wings_face:normal(Lf, We),
+    FaceNormR = wings_face:normal(Rf, We),
+    Normal = e3d_vec:average(FaceNormL, FaceNormR),
+    {Normal, Pos};
 point_center(face, F, We) ->
-    wings_face:center(F, We).
+    Pos = wings_face:center(F, We),
+    Normal = wings_face:normal(F, We),
+    {Normal, Pos}.
 
 %% Magnet
 %% Setup magnet in the middle of a tweak op
@@ -1496,14 +1508,14 @@ show_cursor(El, #dlo{src_sel={Mode,_},src_we=#we{id=Id}=We,drag=#drag{mm=MM}}) -
     Center = case catch wings_vertex:center(Vs0, We) of
         {X,Y,Z}=C when C =:= {float(X), float(Y), float(Z)} -> C;
         _ ->
-          {C,_} = wings_pref:get_value(tweak_geo_point),
+          {{_,C},_} = wings_pref:get_value(tweak_geo_point),
           C
     end,
     Matrices = wings_u:get_matrices(Id, MM),
     {X0,Y0,_} = obj_to_screen(Matrices, Center),
     show_cursor_1(X0,Y0);
 show_cursor(_,_) ->
-    {Center,{_,Mir,{Id,_}}} = wings_pref:get_value(tweak_geo_point),
+    {{_,Center},{_,Mir,{Id,_}}} = wings_pref:get_value(tweak_geo_point),
     Matrices = wings_u:get_matrices(Id, Mir),
     {X0,Y0,_} = obj_to_screen(Matrices, Center),
     show_cursor_1(X0,Y0).
@@ -2241,9 +2253,12 @@ set_axis_lock(clear) ->
     wings_pref:set_value(tweak_xyz,[false,false,false]),
     wings_pref:set_value(tweak_point,none),
     wings_pref:set_value(tweak_axis, screen);
-set_axis_lock(P) when P =:= from_cursor; P =:= from_element; P =:= from_default ->
+set_axis_lock(P) when P =:= from_cursor; P =:= from_element; P =:= from_default;
+  P =:= hilite_toggle ->
     Pref = case wings_pref:get_value(tweak_point) of
       P -> none;
+      {M,P} -> M;
+      M when P =:= hilite_toggle -> {M,P};
       _ -> P
     end,
     wings_pref:set_value(tweak_point,Pref);
