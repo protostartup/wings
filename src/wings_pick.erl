@@ -318,6 +318,10 @@ draw_point_sel(Center, Normal) ->
     Colour,
     gl:vertex3fv({Cx,Cy,Cz}),
     gl:vertex3fv({Vx,Vy,Vz}),
+    gl:'end'(),
+    gl:pointSize(wings_pref:get_value(selected_vertex_size)+2),
+    gl:'begin'(?GL_POINTS),
+    gl:vertex3fv({Vx,Vy,Vz}),
     gl:'end'().
 
 hilit_draw_sel(vertex, V, #dlo{src_we=#we{vp=Vtab}}) ->

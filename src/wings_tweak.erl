@@ -481,10 +481,11 @@ end_magnet_event(#tweak{id=Id,st=St}=T) ->
     end_magnet_adjust(Id),
     wings_wm:later({new_state,St}),
     pop.
-end_magnet_event(Ev,#tweak{ox=X0,oy=Y0}=T) ->
+end_magnet_event(Ev,#tweak{ox=X0,oy=Y0,id=Id}=T) ->
     save_magnet_prefs(T),
-    wings_wm:release_focus(),
-    wings_io:ungrab(X0,Y0),
+    end_magnet_adjust(Id),
+%    wings_wm:release_focus(),
+%    wings_io:ungrab(X0,Y0),
     wings_wm:later(Ev),
     pop.
 
