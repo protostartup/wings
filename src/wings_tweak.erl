@@ -190,14 +190,27 @@ handle_tweak_event_1(#tweak{ox=X, oy=Y, st=#st{sel=Sel}=St0}=T0) ->
         do_tweak_0(0.0, 0.0, 0.0, 0.0, {move,screen}),
         T = T0#tweak{id={add,IdElem},ox=GX,oy=GY,cx=0,cy=0},
         {seq,push,update_tweak_handler(T)};
-      {Pick, {Id,Elem,_}=What, _} ->
+      {add, {Id,Elem,_}=What, St} ->
+        from_element_point(X,Y,St),
+        IdElem = {Id,gb_sets:singleton(Elem)},
+        wings_wm:grab_focus(),
+        wings_io:grab(),
+        case wings_pref:get_value(tweak_point) of
+          from_element -> begin_drag(What, St0, T0);
+          from_cursor -> begin_drag(What, St0, T0);
+          _other -> begin_drag(What, St, T0)
+        end,
+        do_tweak_0(0.0, 0.0, 0.0, 0.0, {move,screen}),
+        T = T0#tweak{id={add,IdElem},ox=GX,oy=GY,cx=0,cy=0},
+        {seq,push,update_tweak_handler(T)};
+      {delete, {Id,Elem,_}=What, _} ->
         from_element_point(X,Y,St0),
         IdElem = {Id,gb_sets:singleton(Elem)},
         wings_wm:grab_focus(),
         wings_io:grab(),
         begin_drag(What, St0, T0),
         do_tweak_0(0.0, 0.0, 0.0, 0.0, {move,screen}),
-        T = T0#tweak{id={Pick,IdElem},ox=GX,oy=GY,cx=0,cy=0},
+        T = T0#tweak{id={delete,IdElem},ox=GX,oy=GY,cx=0,cy=0},
         {seq,push,update_tweak_handler(T)};
       none -> next
     end.
@@ -484,8 +497,6 @@ end_magnet_event(#tweak{id=Id,st=St}=T) ->
 end_magnet_event(Ev,#tweak{ox=X0,oy=Y0,id=Id}=T) ->
     save_magnet_prefs(T),
     end_magnet_adjust(Id),
-%    wings_wm:release_focus(),
-%    wings_io:ungrab(X0,Y0),
     wings_wm:later(Ev),
     pop.
 
