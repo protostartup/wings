@@ -495,7 +495,7 @@ end_magnet_event(#tweak{id=Id,st=St}=T) ->
     end_magnet_adjust(Id),
     wings_wm:later({new_state,St}),
     pop.
-end_magnet_event(Ev,#tweak{ox=X0,oy=Y0,id=Id}=T) ->
+end_magnet_event(Ev,#tweak{id=Id}=T) ->
     save_magnet_prefs(T),
     end_magnet_adjust(Id),
     wings_wm:later(Ev),

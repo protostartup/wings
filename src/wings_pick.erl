@@ -173,6 +173,10 @@ handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev={_,_}=PH}=HL0) ->
     end;
 handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev=PrevHit}=HL0) ->
     #hl{always_dirty=Dirty,st=St,filter=Accept}=HL0,
+    Client = case wings_wm:this() of
+      {C,_} -> C =:= geom;
+      C -> C =:= geom
+    end,
     case raw_pick(X, Y, St) of
 	PrevHit when Dirty ->
 	    wings_wm:dirty(),
@@ -180,7 +184,7 @@ handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev=PrevHit}=HL0) ->
 	PrevHit ->
 	    {Active, _} = wings_pref:get_value(tweak_prefs),
 	    case wings_pref:get_value(tweak_point) of
-	      from_element when Active =:= active ->
+	      from_element when Active =:= active andalso Client ->
 	        Hit = tweak_hilite(X,Y,St),
 	        wings_wm:dirty(),
 	        insert_two_hilites_dl(PrevHit, Hit, St),
@@ -201,7 +205,7 @@ handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev=PrevHit}=HL0) ->
 	        wings_wm:dirty(),
 	        {Active, _} = wings_pref:get_value(tweak_prefs),
 	        case wings_pref:get_value(tweak_point) of
-	          from_element when Active =:= active ->
+	          from_element when Active =:= active  andalso Client ->
 	            Hit0 = tweak_hilite(X, Y, St),
 	            insert_two_hilites_dl(Hit, Hit0, St);
 	          _ ->
