@@ -101,7 +101,12 @@ paint_pick(X, Y, St0) ->
 get_hilite_event(HL) ->
     fun(Ev) -> handle_hilite_event(Ev, HL) end.
 
-handle_hilite_event(redraw,#hl{redraw=#st{sel=[]}=St,prev={SelMode,Where,{Obj,Elem}}}=Hl) ->
+handle_hilite_event(redraw,#hl{redraw=#st{sel=[]}=St,prev=Prev}=Hl) when is_tuple(Prev) ->
+    case Prev of
+      {_,_} ->
+        {{SelMode,Where,{Obj,Elem}},_} = Prev;
+      _ -> {SelMode,Where,{Obj,Elem}} = Prev
+    end,
     Mode = case SelMode of
       vertex -> ?__(4,"Vertex");
       edge -> ?__(5,"Edge");
@@ -154,8 +159,10 @@ handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev={_,_}=PH}=HL0) ->
 		true ->
 		    wings_wm:dirty(),
 		    {Active, _} = wings_pref:get_value(tweak_prefs),
-		    case wings_pref:get_value(tweak_point) of
-		      from_element when Active =:= active ->
+		    DirElement = (wings_pref:get_value(tweak_point) =:= from_element) or
+		                 (wings_pref:get_value(tweak_axis) =:= element_normal),
+		    case DirElement of
+		      true when Active =:= active ->
 		        insert_two_hilites_dl(SelHit, PointHit, St),
 		        HL = HL0#hl{prev=Hit};
 		      _ ->
@@ -183,12 +190,18 @@ handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev=PrevHit}=HL0) ->
 	    get_hilite_event(HL0);
 	PrevHit ->
 	    {Active, _} = wings_pref:get_value(tweak_prefs),
-	    case wings_pref:get_value(tweak_point) of
-	      from_element when Active =:= active andalso Client ->
-	        Hit = tweak_hilite(X,Y,St),
-	        wings_wm:dirty(),
-	        insert_two_hilites_dl(PrevHit, Hit, St),
-	        HL = HL0#hl{prev={PrevHit,Hit}};
+	    DirElement = (wings_pref:get_value(tweak_point) =:= from_element) or
+	                 (wings_pref:get_value(tweak_axis) =:= element_normal),
+	    case DirElement of
+	      true when Active =:= active andalso Client ->
+	        case tweak_hilite(X,Y,St) of
+	          none ->
+	            HL = HL0;
+	          Hit ->
+	            wings_wm:dirty(),
+	            insert_two_hilites_dl(PrevHit, Hit, St),
+	            HL = HL0#hl{prev={PrevHit,Hit}}
+	        end;
 	      _ ->
 	        HL = HL0
 	    end,
@@ -204,8 +217,10 @@ handle_hilite_event(#mousemotion{x=X,y=Y}, #hl{prev=PrevHit}=HL0) ->
 	    true ->
 	        wings_wm:dirty(),
 	        {Active, _} = wings_pref:get_value(tweak_prefs),
-	        case wings_pref:get_value(tweak_point) of
-	          from_element when Active =:= active  andalso Client ->
+	        DirElement = (wings_pref:get_value(tweak_point) =:= from_element) or
+	                     (wings_pref:get_value(tweak_axis) =:= element_normal),
+	        case DirElement of
+	          true when Active =:= active andalso Client ->
 	            Hit0 = tweak_hilite(X, Y, St),
 	            insert_two_hilites_dl(Hit, Hit0, St);
 	          _ ->
@@ -363,7 +378,12 @@ hilit_draw_sel(body, _, #dlo{vab=#vab{face_vs=Vs}}=D) ->
     wings_draw_setup:disableVertexPointer(Vs),
     gl:disable(?GL_POLYGON_STIPPLE).
 
-enhanced_hl_info(Base,#hl{redraw=#st{sel=[],shapes=Shs},prev={SelMode,_,{Obj,Elem}}})->
+enhanced_hl_info(Base,#hl{redraw=#st{sel=[],shapes=Shs},prev=Prev}) when is_tuple(Prev) ->
+    case Prev of
+      {_,_} ->
+        {{SelMode,_,{Obj,Elem}},_} = Prev;
+      _ -> {SelMode,_,{Obj,Elem}} = Prev
+    end,
     case wings_pref:get_value(info_text_on_hilite) of
       true ->
         We = gb_trees:get(Obj, Shs),
