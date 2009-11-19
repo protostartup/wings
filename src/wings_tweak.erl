@@ -199,7 +199,11 @@ handle_tweak_event_1(#tweak{ox=X, oy=Y, st=#st{sel=Sel}=St0}=T0) ->
         case wings_pref:get_value(tweak_point) of
           from_element -> begin_drag(What, St0, T0);
           from_cursor -> begin_drag(What, St0, T0);
-          _other -> begin_drag(What, St, T0)
+          _other -> 
+            case wings_pref:get_value(tweak_axis) of
+              element_normal -> begin_drag(What, St0, T0);
+              _ -> begin_drag(What, St, T0)
+            end
         end,
         do_tweak_0(0.0, 0.0, 0.0, 0.0, {move,screen}),
         T = T0#tweak{id={add,IdElem},ox=GX,oy=GY,cx=0,cy=0},
@@ -714,6 +718,8 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,pos0=Orig,pst=none,  %% pst =:= none
     end,
     {Xs,Ys,Zs} = obj_to_screen(Matrices, Pos0),
     TweakPos = screen_to_obj(Matrices, {Xs+DX,Ys-DY,Zs}),
+    TweakPointOpType = wings_pref:get_value(tweak_point),
+    {{Axis,Point},_} = wings_pref:get_value(tweak_geo_point),
     {Dir,Pos} = case Type of
         x -> {axis,{1.0,0.0,0.0}};
         y -> {axis,{0.0,1.0,0.0}};
@@ -730,6 +736,7 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,pos0=Orig,pst=none,  %% pst =:= none
             {_,Normal} = wings_pref:get_value(default_axis),
             {radial,Normal};
         uniform -> {uniform, TweakPos};
+        element_normal -> {element_normal, Axis};
         _ -> {user,TweakPos}  %% This is for Default Scaling
     end,
     {_, XX, YY} = wings_io:get_mouse_state(), %% Mouse Position
@@ -751,9 +758,6 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,pos0=Orig,pst=none,  %% pst =:= none
       true -> e3d_vec:neg(V2);
       false -> V2
     end,
-
-    TweakPointOpType = wings_pref:get_value(tweak_point),
-    {{Axis,Point},_} = wings_pref:get_value(tweak_geo_point),
 
     PrimeVec = case Dir of
         user when TweakPointOpType =:= from_element -> Axis;
@@ -806,7 +810,7 @@ do_tweak(#dlo{drag=#drag{pos=Pos0,pos0=Orig,pst={Type,Dir,PrimeVec},
 
 do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,mag=Mag0,mm=MM}=Drag,
           src_we=#we{id=Id,mirror=Mir}}=D0, DX, DY, _DxOrg, _DyOrg,
-          {move,_}=Mode) ->
+          {move,Type}) ->
     Matrices = case Mir of
         none -> wings_u:get_matrices(Id, original);
         _ -> wings_u:get_matrices(Id, MM)
@@ -816,42 +820,47 @@ do_tweak(#dlo{drag=#drag{vs=Vs,pos=Pos0,mag=Mag0,mm=MM}=Drag,
     {Tx,Ty,Tz} = TweakPos,
     {Px,Py,Pz} = Pos0,
     {Vtab,Mag} =
-    case Mode of
-        {move,screen} ->
+    case Type of
+        screen ->
             Pos = TweakPos,
             magnet_tweak(Mag0, Pos);
-        {move,x} ->
+        x ->
             Pos = {Tx,Py,Pz},
             magnet_tweak(Mag0, Pos);
-        {move,y} ->
+        y ->
             Pos = {Px,Ty,Pz},
             magnet_tweak(Mag0, Pos);
-        {move,z} ->
+        z ->
             Pos = {Px,Py,Tz},
             magnet_tweak(Mag0, Pos);
-        {move,xy} ->
+        xy ->
             Pos = {Tx,Ty,Pz},
             magnet_tweak(Mag0, Pos);
-        {move,yz} ->
+        yz ->
             Pos = {Px,Ty,Tz},
             magnet_tweak(Mag0, Pos);
-        {move,zx} ->
+        zx ->
             Pos = {Tx,Py,Tz},
             magnet_tweak(Mag0, Pos);
-        {move,normal} ->
+        normal ->
             Normals = sel_normal(Vs,D0),
             Pos = tweak_normal(Normals, Pos0, TweakPos),
             magnet_tweak(Mag0, Pos);
-        {move,planar} ->
+        planar ->
             Pos = tweak_tangent(Vs, Pos0, TweakPos, D0),
             magnet_tweak(Mag0, Pos);
-        {move,default} ->
-            Pos = tweak_default_axis(Pos0, TweakPos),
+        default ->
+            {_,Axis} = wings_pref:get_value(default_axis),
+            Pos = tweak_along_axis(Axis, Pos0, TweakPos),
             magnet_tweak(Mag0, Pos);
-        {move,default_planar} ->
+        default_planar ->
             Pos = tweak_default_tangent(Pos0, TweakPos),
             magnet_tweak(Mag0, Pos);
-        {move,_} ->
+        element_normal ->
+            {{Axis,_},_} = wings_pref:get_value(tweak_geo_point),
+            Pos = tweak_along_axis(Axis, Pos0, TweakPos),
+            magnet_tweak(Mag0, Pos);
+        _ ->
             Pos = TweakPos,
             magnet_tweak(Mag0, Pos)
     end,
@@ -1115,16 +1124,15 @@ tweak_normal(Normals, Pos0, TweakPos) ->
         end
     end.
 
-%% Along Default Axis
-tweak_default_axis(Pos0, TweakPos) ->
-    {_,N} = wings_pref:get_value(default_axis),
+%% Tweak Along a non-standard Axis
+tweak_along_axis(Axis, Pos0, TweakPos) ->
     %% Return the point along the normal closest to TweakPos.
-    Dot = e3d_vec:dot(N, N),
+    Dot = e3d_vec:dot(Axis, Axis),
     if
     Dot =:= 0.0 -> Pos0;
     true ->
-        T = e3d_vec:dot(N, e3d_vec:sub(TweakPos, Pos0)) / Dot,
-        e3d_vec:add_prod(Pos0, N, T)
+        T = e3d_vec:dot(Axis, e3d_vec:sub(TweakPos, Pos0)) / Dot,
+        e3d_vec:add_prod(Pos0, Axis, T)
     end.
 
 %% vertex_normal(Vertex, DLO) -> UnormalizedNormal
@@ -2253,7 +2261,7 @@ modifier({Ctrl,Shift,Alt}) ->
     [C,S,A].
 
 set_axis_lock(clear) ->
-    PointPref = case wings_pref:get_value(tweak_point) of
+    case wings_pref:get_value(tweak_point) of
       {_,_} -> ok;
       _ ->
         wings_pref:set_value(tweak_xyz,[false,false,false]),
