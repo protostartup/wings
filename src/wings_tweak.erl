@@ -2253,32 +2253,58 @@ modifier({Ctrl,Shift,Alt}) ->
     [C,S,A].
 
 set_axis_lock(clear) ->
-    wings_pref:set_value(tweak_xyz,[false,false,false]),
-    wings_pref:set_value(tweak_point,none),
-    wings_pref:set_value(tweak_axis, screen);
-set_axis_lock(P) when P =:= from_cursor; P =:= from_element; P =:= from_default;
-  P =:= hilite_toggle ->
+    PointPref = case wings_pref:get_value(tweak_point) of
+      {_,_} -> ok;
+      _ ->
+        wings_pref:set_value(tweak_xyz,[false,false,false]),
+        wings_pref:set_value(tweak_point,none),
+        wings_pref:set_value(tweak_axis, screen)
+    end;
+set_axis_lock(hilite_toggle = H) ->
+    PointPref = case wings_pref:get_value(tweak_point) of
+      {P,H} -> P;
+      P -> {P,H}
+    end,
+    AxisPref = case wings_pref:get_value(tweak_axis) of
+      {A,H} -> A;
+      A -> {A,H}
+    end,
+    XYZPref = case wings_pref:get_value(tweak_xyz) of
+      {Ax,H} -> Ax;
+      Ax -> {Ax,H}
+    end,
+    wings_pref:set_value(tweak_axis, AxisPref),
+    wings_pref:set_value(tweak_xyz, XYZPref),
+    wings_pref:set_value(tweak_point, PointPref);
+
+set_axis_lock(P) when P =:= from_cursor; P =:= from_element; P =:= from_default ->
     Pref = case wings_pref:get_value(tweak_point) of
+      {_,_}=Prf -> Prf;
       P -> none;
-      {M,P} -> M;
-      M when P =:= hilite_toggle -> {M,P};
       _ -> P
     end,
     wings_pref:set_value(tweak_point,Pref);
 set_axis_lock(Axis) when Axis =:= x; Axis =:= y; Axis =:= z->
-    [X,Y,Z] = wings_pref:get_value(tweak_xyz),
-    NewPref = case Axis of
-      x -> [not X, Y, Z];
-      y -> [X, not Y, Z];
-      z -> [X, Y, not Z]
-    end,
-    wings_pref:set_value(tweak_axis, screen),
-    wings_pref:set_value(tweak_xyz, NewPref);
+    case wings_pref:get_value(tweak_xyz) of
+      [X,Y,Z] ->
+          NewPref = case Axis of
+            x -> [not X, Y, Z];
+            y -> [X, not Y, Z];
+            z -> [X, Y, not Z]
+          end,
+          wings_pref:set_value(tweak_axis, screen),
+          wings_pref:set_value(tweak_xyz, NewPref);
+      _ -> ok
+    end;
 set_axis_lock(Axis) ->
-    wings_pref:set_value(tweak_xyz,[false,false,false]),
     case wings_pref:get_value(tweak_axis) of
-      Axis -> wings_pref:set_value(tweak_axis,screen);
-      _otherwise -> wings_pref:set_value(tweak_axis, Axis)
+      {_,_} -> ok;
+      Axis ->
+        wings_pref:set_value(tweak_xyz,[false,false,false]),
+        wings_pref:set_value(tweak_axis,screen);
+      _otherwise ->
+        wings_pref:set_value(tweak_xyz,[false,false,false]),
+        wings_pref:set_value(tweak_axis, Axis)
     end.
 
 camera_msg() ->
@@ -2422,18 +2448,26 @@ event(#mousemotion{x=X,y=Y}, Tw) ->
 event(#mousebutton{state=?SDL_RELEASED},#tw{current=[]}) ->
     keep;
 event(#mousebutton{button=1,state=?SDL_RELEASED}, #tw{current={cmd,Cmd},st=St}=Tw0) ->
-    St1 = command(Cmd,St),
-    Tw = update_tweak_palette(Tw0),
-    wings_wm:dirty(),
-    get_event(Tw#tw{st=St1});
+    case wings_pref:get_value(tweak_point) of
+      {_,_} -> get_event(Tw0);
+      _ ->
+        St1 = command(Cmd,St),
+        Tw = update_tweak_palette(Tw0),
+        wings_wm:dirty(),
+        get_event(Tw#tw{st=St1})
+    end;
 event(#mousebutton{button=B,mod=Mod,state=?SDL_RELEASED}, #tw{current=Mode}=Tw0) when B =< 3 ->
-    Ctrl = Mod band ?CTRL_BITS =/= 0,
-    Shift = Mod band ?SHIFT_BITS =/= 0,
-    Alt = Mod band ?ALT_BITS =/= 0,
-    set_tweak_pref(Mode, B, {Ctrl, Shift, Alt}),
-    Tw = update_tweak_palette(Tw0),
-    wings_wm:dirty(),
-    get_event(Tw);
+    case wings_pref:get_value(tweak_point) of
+      {_,_} -> get_event(Tw0);
+      _ ->
+        Ctrl = Mod band ?CTRL_BITS =/= 0,
+        Shift = Mod band ?SHIFT_BITS =/= 0,
+        Alt = Mod band ?ALT_BITS =/= 0,
+        set_tweak_pref(Mode, B, {Ctrl, Shift, Alt}),
+        Tw = update_tweak_palette(Tw0),
+        wings_wm:dirty(),
+        get_event(Tw)
+    end;
 event(lost_focus, Tw) ->
     wings_wm:dirty(),
     get_event(Tw#tw{current=[]});
@@ -2626,14 +2660,18 @@ cmd_prefix(Cmd) ->
         {axis_constraint, Cmd}
     end.
 
-update_tweak_palette(Tw) ->
-    {Mode, Menu} = case wings_wm:this() of
-      tweak_palette ->
-        {tweak_tool(1, {false, false, false}), valid_menu_items(menu())};
-      tweak_mag_palette ->
-        {wings_pref:get_value(tweak_magnet),valid_menu_items(tweak_magnet_menu())};
-      tweak_axis_palette ->
-        {none, valid_menu_items(constraints_menu())}
+update_tweak_palette(#tw{mode=Mode0,menu=Menu0}=Tw) ->
+    {Mode, Menu} = case wings_pref:get_value(tweak_point) of
+      {_,_} -> {Mode0,Menu0};
+      _ ->
+        case wings_wm:this() of
+          tweak_palette ->
+            {tweak_tool(1, {false, false, false}), valid_menu_items(menu())};
+          tweak_mag_palette ->
+            {wings_pref:get_value(tweak_magnet),valid_menu_items(tweak_magnet_menu())};
+          tweak_axis_palette ->
+            {none,valid_menu_items(constraints_menu())}
+        end
     end,
     Tw#tw{mode=Mode,menu=Menu}.
 
