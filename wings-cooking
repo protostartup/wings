@@ -22,7 +22,7 @@ foreach (`git for-each-ref --format='%(refname)' refs/heads`) {
 
     my $origin = `git rev-parse -q --verify origin/$_`;
     chomp $origin;
-    my @revs = `git rev-list next..$id`;
+    my @revs = `git rev-list master..$id`;
     if ($origin eq '') {
 	print "* NOT PUBLISHED\n";
     } else {
