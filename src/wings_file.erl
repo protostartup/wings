@@ -124,10 +124,10 @@ menu(_) ->
       ?__(14,"Save only the selected objects or faces")},
      {?__(15,"Save Incrementally"),save_incr,
       ?__(26,"Generate new filename and save")},
-	  %% if there are more options we'll make a panel
-	 {?__(29,"Save Unused Materials"),save_unused_materials,
-	  ?__(30,"Include unused materials when saving a .wings file"),
-	  save_unused_mats()},
+      %% if there are more options we'll make a panel
+     {?__(29,"Save Unused Materials"),save_unused_materials,
+      ?__(30,"Include unused materials when saving a .wings file"),
+      save_unused_mats()},
      separator,
      {?__(16,"Revert"),revert,
       ?__(17,"Revert current scene to the saved contents")},
@@ -142,13 +142,25 @@ menu(_) ->
      separator,
      {?__(24,"Install Plug-In"),install_plugin,
       ?__(27,"Install a plug-in")},
+     separator,
+     {?__(31,"Save Preference Subset..."),save_pref,
+      ?__(32,"Save a preference subset from your current settings")},
+     {?__(33,"Load Preference Subset"),
+       {load_pref,
+         [{?__(35,"Load..."),custom_theme,
+           ?__(36,"Load a previously saved preference subset")},
+          separator,
+          {?__(37,"Classic Green Theme"),classic_theme,
+           ?__(38,"Change the display colors to the original Wings3D theme with the green titlebars")},
+          {?__(39,"Dark Blue Theme"),dark_blue_theme,
+           ?__(40,"Change the display colors to the Dark Blue theme")}|wings_pref:recent_prefs()]}},
      separator|recent_files(Tail)].
 
 save_unused_mats() ->
     case wings_pref:get_value(save_unused_materials) of
 	  true -> [crossmark];
 	  false -> []
-	end.
+    end.
 
 command(new, St) ->
     new(St);
@@ -223,6 +235,15 @@ command(install_plugin, _St) ->
     install_plugin();
 command({install_plugin,Filename}, _St) ->
     wings_plugin:install(Filename);
+
+command(save_pref, _St) ->
+    wings_pref:pref(save);
+command({load_pref,Request}, St) ->
+    wings_pref:pref({load,Request,St});
+command({pref,Request}, St) ->
+    wings_pref:pref(Request,St),
+    keep;
+
 command(quit, #st{saved=true}) ->
     quit;
 command(quit, _) ->
