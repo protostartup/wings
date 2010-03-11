@@ -72,7 +72,8 @@ lookup(Ev, Cmd) ->
 lookup_1(Ev,SelMode) ->
 %% Checks for menubar items that are selection mode specific called by hotkey.
     case lookup(Ev, none) of
-      {select,{edge_loop,edge_loop}}=EL when SelMode == face ->
+      {select,{edge_loop,edge_loop}}=EL
+        when SelMode =:= face; SelMode =:= vertex ->
           EL;
       {select,{edge_loop,complete_loops}}=EL ->
           EL;
