@@ -128,10 +128,10 @@ drag_mode(Type) ->
     {Mode,Norm} = wings_pref:get_value(Type,{average,loop}),
     {Type,Mode,Norm}.
 
-drag_units({inset_faces,_,absolute,_,_}) -> [distance,skip,skip,bump];
-drag_units({inset_faces,_,relative,continue,_}) -> [percent,skip,skip,bump];
-drag_units({inset_faces,_,relative,stop,_}) -> [{percent,{0.0,1.0}},skip,skip,bump];
-drag_units({_,_,_}) -> [distance,skip,skip,bump].
+drag_units({inset_faces,_,absolute,_,_}) -> [distance,skip,bump];
+drag_units({inset_faces,_,relative,continue,_}) -> [percent,skip,bump];
+drag_units({inset_faces,_,relative,stop,_}) -> [{percent,{0.0,1.0}},skip,bump];
+drag_units({_,_,_}) -> [distance,skip,bump].
 
 modes() ->
     fun
@@ -775,7 +775,7 @@ offset_regions_fun(OffsetData,{_,Solution,_}=State) ->
     fun
       (new_mode_data, {NewState,_}) ->
           offset_regions_fun(OffsetData, NewState);
-      ([Dist, _, _, Bump|_], A) ->
+      ([Dist, _, Bump|_], A) ->
         lists:foldl(fun({LoopNormal,VsData},VsAcc0) ->
             lists:foldl(fun
               ({V,{Vpos0,VNorm}},VsAcc) ->
@@ -797,7 +797,7 @@ inset_regions_fun(InsetData,State) ->
     fun
       (new_mode_data, {NewState,_}) ->
           inset_regions_fun(InsetData, NewState);
-      ([Dist, _, _, Bump|_], A) ->
+      ([Dist, _, Bump|_], A) ->
         lists:foldl(fun({LoopNormal,VsData},VsAcc0) ->
             lists:foldl(fun
               ({V,{Vpos0,VNorm}},VsAcc) ->
@@ -815,7 +815,7 @@ inset_faces_fun(InsetData,State) ->
     fun
       (new_mode_data, {NewState,_}) ->
           inset_faces_fun(InsetData, NewState);
-      ([Amount, _, _, Bump|_], A) ->
+      ([Amount, _, Bump|_], A) ->
         {SmallestDistObj,VData} = InsetData,
         lists:foldl(fun({FNorm,SmallestDistF,VertexData},VsAcc0) ->
             lists:foldl(fun({Vs,Data},VsAcc) ->
