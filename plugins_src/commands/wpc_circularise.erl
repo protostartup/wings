@@ -48,7 +48,7 @@ circular_arc_options() ->
     end.
 
 %%%% Commands
-command({edge,circularise},St) ->
+command({Mode,circularise},St) when Mode =:= edge; Mode =:= {auv,edge} ->
     VsData = wings_sel:fold(fun(Edges, We, Acc) ->
         EdgeGroups = wings_edge_loop:partition_edges(Edges, We),
         VsList = wings_edge_loop:edge_links(Edges,We),
