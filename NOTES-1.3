@@ -1,3 +1,99 @@
+--- (next version) -------------------------------------------------------------
+- AutoUV: Added a simple world space normal shader. [dgud]
+
+- The "Scene Info: Area & Volume" command (in the tools menu)
+  has been cosmetically improved and now properly displays the info
+  in a multiple-column tabular-format, which is much easier to read. [scorpius]
+
+- Added Select|Edge Loop|Select Nth Ring. [optigon]
+
+- Sweep extrusion normal fix. [optigon]
+
+- New Feature: Body|Explode scales objects from a defined center.
+  Includes standard and user axes, uniform, and radial axis options.
+  (Thanks to ggaliens for the idea) [optigon]
+
+- New Feature: Plane Cut for objects and face regions. [optigon]
+
+- New Feature: Rollup any window by clicking on its titlebar.
+  The main Geometry window behaves differently and doesn't rollup.
+  Instead, it moves from the foreground to the background, either
+  covering or revealing any coexisting windows. [optigon]
+
+- In the Tools menu, Snap Image and Screenshot have been extended
+  in several useful ways. It is now possible to take a screenshot of
+  just the main viewport. Coupled with this feature are changes to
+  Snap Image, which now has options to Fit the image to the viewport's
+  dimensions. This new combination of features allows for better
+  projection painting workflows using a 2d painting program like Gimp.
+  The new Screenshot features are available through in its options
+  dialog. You can also save the current view to the Saved Views at
+  the same time and with the same name as the screenshot so that they
+  can be aligned later. [optigon]
+
+- Plugin Manager format fixes. [optigon]
+
+- AutoUV: Added Move Horizontal and Vertical. [optigon]
+
+- New interface features including:
+  - A Menu Toolbar with icons for undo/redo, repeat last command,
+  changing selection modes, and opening the Select or Tools
+  menus can be switched on via Preferences|User Interface.
+  - A new facility for saving and loading preferences from and
+  into your current session, has been added to the File menu.
+  These new preference subsets are appended with the .pref
+  extension, and are saved separately from your 'master' Wings
+  preference file. Additionally, both the Save and Load dialogs
+  allow you to choose from catagories of preferences you'd like
+  to load or save: hotkeys, graphical elements, etc.
+  - New icons for the Outliner and Geometry Graph that allow you
+  to use custom colors for how they look. These icons can be
+  switched on in Preferences|User Interface.
+  - Other minor changes include a new color scheme and some minor
+  tweaks to the existing gui elements. Switch between the
+  Classic Green theme and the new Dark Blue theme in File|Load
+  Preferences. [optigon]
+
+- AutoUV: Added Edge|Circularise to AutoUV. [optigon]
+
+- AutoUV: Fix to ensure that Segmentation window opens with
+  elements visible in viewport. [optigon]
+
+- Face|Bridge has been extended to connect any two face regions
+  regardless of how many faces or vertices they each have. [optigon]
+
+- Added rewrite of Tweak. [optigon]
+
+- I have changed the mouse buttons that perform secondary drag
+  operations. For instance, Move|Free has an option to drag in the
+  direction of the screen normal, and this option was bound to MMB.
+  Now it is activated by holding LMB instead. Simiar changes were
+  made to all the other tools that use a single secondary drag
+  parameter. Also, introducing Hold LMB into the mix, allowed me to
+  make Face|Sweep fully articulated between all four drag parameters
+  (Extrude, Angle, Scale, and Rotation). [optigon]
+
+- The arrow key and scroll wheel pan speed preferences have
+  been changed to offer a more useful range of adjustment. [optigon]
+
+- Minor changes to Tools|Connect to allow consecutive vertices
+  to be placed  on the same edge. [optigon]
+
+- Welding objects with only two faces could crash. (Thanks to
+  Fonte Boa). [optigon]
+
+- New Feature: Select|Edge Loop while in vertex mode will now
+  convert consecutive vertices to edges. [optigon]
+
+- Select|By|Sharp Edges now allows you to specify Peaks,
+  Valleys, or Both. [optigon]
+
+- Saved selection groups have been updated to allow Cycling
+  via hotkey, and this feature can be set to cycle only within the
+  current selection mode. I also added some selection group delection
+  options. One option deletes all saved groups, and the other deletes
+  only those groups that are corrupt. [optigon]
+
 --- 1.3.0 ----------------------------------------------------------------------
 - New Feature: Rotate|Unconstrained is a trackball style rotation tool
   contributed by ania, complete with magnets, user input rotation points,
