@@ -307,8 +307,8 @@ arc_setup(Plane,VsData,St) ->
     Tvs = lists:foldl(fun({VertList,We},Acc) ->
             arc_setup(State,Plane,VertList,We,Acc)
             end, [], VsData),
-    Flags = [{mode, {arc_modes(),State}},{initial,[0.0,0.0,0.0,1.0]}],
-    Units = [angle, skip, skip, percent],
+    Flags = [{mode, {arc_modes(),State}},{initial,[0.0,0.0,1.0]}],
+    Units = [angle, skip, percent],
     wings_drag:setup(Tvs, Units, Flags, St).
 
 arc_setup(State,Plane0,[VsList|Loops],#we{id=Id,vp=Vtab}=We,Acc) ->
@@ -437,7 +437,7 @@ circle_setup(Plane,St) ->
           circ_sel_error_4()
       end
     end,[],St),
-    Flags = [{mode,{circ_mode(),State}},{initial,[1.0,0.0,0.0,1.0]}],
+    Flags = [{mode,{circ_mode(),State}},{initial,[1.0,0.0,1.0]}],
     wings_drag:setup(Tvs,circularise_units(State),Flags,St).
 
 %%%% Circularise Setup MMB
@@ -455,7 +455,7 @@ circle_pick_all_setup(Vs0,RayV,Center,Axis0,#we{vp=Vtab,id=Id},St) ->
     VertDegList = degrees_from_static_ray(Vs,Vtab,Deg,Index,1,[]),
     Data = {Center,Ray,Len,Axis,VertDegList},
     Tvs = [{Id,{Vs,make_circular_fun(Data,State)}}],
-    Flags = [{mode,{circ_mode(),State}},{initial,[1.0,0.0,0.0,1.0]}],
+    Flags = [{mode,{circ_mode(),State}},{initial,[1.0,0.0,1.0]}],
     wings_drag:setup(Tvs,circularise_units(State),Flags,St).
 
 circle_setup_1([],_,_,_,Acc) -> Acc;
@@ -626,9 +626,9 @@ degrees_from_static_ray([Vert|Vs],Vtab,Deg,Index,At,DegList) ->
     degrees_from_static_ray(Vs, Vtab, Deg, Index, At+1.0, [{Vert,{Vpos, Degrees}}|DegList]).
 
 circularise_units({_,_,relative}) ->
-    [diametric_factor,skip,skip,percent];
+    [diametric_factor,skip,percent];
 circularise_units({_,_,absolute}) ->
-    [absolute_diameter,skip,skip,percent].
+    [absolute_diameter,skip,percent].
 
 %%%% Arc Modes
 arc_modes() ->
@@ -695,7 +695,7 @@ make_arc_fun(Data0,State) ->
     fun
       (new_mode_data,{NewState,_}) ->
         make_arc_fun(Data0, NewState);
-      ([Angle, _, _, Percent|_], A) ->
+      ([Angle, _, Percent|_], A) ->
         {Data,VertDistList} = Data0,
         lists:foldl(fun({V,{Vpos,Index}}, VsAcc) ->
           [{V, arc(Vpos,Index,Data,State,Percent,Angle)}|VsAcc]
@@ -728,7 +728,7 @@ make_circular_fun(Data,State) ->
               Axis = e3d_vec:neg(Axis0),
               make_circular_fun({Center,Ray,Nearest,Axis,VertDegList},NewState)
           end;
-      ([Dia,_,_,Percent|_], A) ->
+      ([Dia,_,Percent|_], A) ->
           {Center,Ray,Nearest,Axis,VertDegList} = Data,
           lists:foldl(fun({V,{Vpos,Degrees}}, VsAcc) ->
             [{V,make_circular(Center,Ray,Nearest,Axis,Degrees,Vpos,State,Percent,Dia)}|VsAcc]
