@@ -39,7 +39,14 @@ contour_menu() ->
     HelpL = lmb_help(),
     HelpM = mmb_help(),
     HelpR = rmb_help(),
-    {Title, contour_fun(), {HelpL,HelpM,HelpR},[]}.
+    Fun = fun
+      (help,_) -> {HelpL,HelpM,HelpR};
+      (1,_Ns) -> {face,{contour,insetfaces}};
+      (2,_Ns) -> {face,{contour,offsetregion}};
+      (3,_Ns) -> {face,{contour,insetregion}};
+      (_, _)  -> ignore
+    end,
+    {Title,{inset,Fun}}.
 
 title() ->
     ?__(1,"Inset").
@@ -49,14 +56,6 @@ mmb_help() ->
     ?__(1,"Offset Region creating new edges around each face group selection").
 rmb_help() ->
     ?__(1,"Inset Region creating new edges inside each face group selection").
-
-contour_fun() ->
-    fun
-      (1,_Ns) -> {face,{contour,insetfaces}};
-      (2,_Ns) -> {face,{contour,offsetregion}};
-      (3,_Ns) -> {face,{contour,insetregion}};
-      (_, _)  -> ignore
-    end.
 
 %%%% Commands
 command({face,{contour,insetregion}}, St) ->

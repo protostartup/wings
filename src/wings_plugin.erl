@@ -509,14 +509,15 @@ plugin_menu_info([_|_]=Menus0) ->
     Menus = normalize_menu(Menus0),
     plugin_menu_info_1(Menus).
 
-plugin_menu_info_1(Cmds) ->
-    case wings_util:rel2fam(Cmds) of
+plugin_menu_info_1(Cmds0) ->
+    Cmds = wings_util:rel2fam(Cmds0),
+    case Cmds of
 	[{Root,SubCmds0}] ->
 	    SubCmds = [wings_util:stringify(C) || C <- SubCmds0],
 	    Str = string:join(SubCmds, ", "),
 	    {label,plugin_root_menu(Root)++Str};
 	_ ->
-	    plugin_menu_info_2(Cmds)
+	    plugin_menu_info_2(Cmds0)
     end.
 
 plugin_menu_info_2(Cmds) ->
@@ -561,6 +562,7 @@ normalize_menu([{Name,Menu}|T]) ->
     end;
 normalize_menu([]) -> [].
 
+plugin_key({_,{Key,_},_}) when is_atom(Key) -> Key;
 plugin_key({_,{Key,_}}) when is_atom(Key) -> Key;
 plugin_key({_,Key,_}) when is_atom(Key) -> Key;
 plugin_key({_,Key,_,_}) when is_atom(Key) -> Key;

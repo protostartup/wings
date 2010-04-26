@@ -4,7 +4,7 @@
 %%    Plugin to flatten, equalise, and inflate open or closed edge loops
 %%    making them circular.
 %%
-%%  Copyright (c) 2008-2009 Richard Jones.
+%%  Copyright (c) 2008-2010 Richard Jones.
 %%
 %%  See the file "license.terms" for information on usage and redistribution
 %%  of this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -20,32 +20,35 @@ init() ->
     true.
 
 %%%% Menu
-menu({edge},Menu) ->
-    lists:reverse(parse(Menu, [], false));
+menu({Mode},Menu) when Mode =:= edge; Mode =:= {auv,edge} ->
+    lists:reverse(parse(Menu, [], Mode, false));
 menu(_,Menu) ->
     Menu.
 
-parse([], NewMenu, true) ->
+parse([], NewMenu, _, true) ->
     NewMenu;
-parse([], NewMenu, false) ->
-    [circular_arc_menu(), separator|NewMenu];
-parse([A = {_,loop_cut,_}|Rest], NewMenu, false) ->
-    parse(Rest, [A,circular_arc_menu()|NewMenu], true);
-parse([Elem|Rest], NewMenu, Found) ->
-    parse(Rest, [Elem|NewMenu], Found).
+parse([], NewMenu, Mode, false) ->
+    [circular_arc_menu(Mode), separator|NewMenu];
+parse([A = {_,loop_cut,_}|Rest], NewMenu, Mode, false) ->
+    parse(Rest, [A,circular_arc_menu(Mode)|NewMenu], Mode, true);
+parse([Elem|Rest], NewMenu, Mode, Found) ->
+    parse(Rest, [Elem|NewMenu], Mode, Found).
 
-circular_arc_menu() ->
-    {?__(1,"Circularise"), circular_arc_options(),
-      {?__(2,"Flatten, equalise, and inflate selected edge loops making them circular"),
+circular_arc_menu(edge) ->
+    Name = ?__(1,"Circularise"),
+    Help = {?__(2,"Flatten, equalise, and inflate selected edge loops making them circular"),
        ?__(4,"Circularise a single open or closed loop using secondary selections"),
-       ?__(5,"Choose common plane to which loops will be flattened")},[]}.
-
-circular_arc_options() ->
-    fun
+       ?__(5,"Choose common plane to which loops will be flattened")},
+    F = fun
+      (help,_) -> Help;
       (1,_Ns) -> {edge,circularise};
       (2,_Ns) -> {edge,circularise_center};
       (3,_Ns) -> {edge,{circularise,{'ASK',[plane]}}}
-    end.
+    end,
+    {Name, {circularise, F}};
+circular_arc_menu({auv,edge}) ->
+    {?__(1,"Circularise"),circularise,
+     ?__(2,"Flatten, equalise, and inflate selected edge loops making them circular")}.
 
 %%%% Commands
 command({Mode,circularise},St) when Mode =:= edge; Mode =:= {auv,edge} ->
