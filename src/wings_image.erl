@@ -766,7 +766,7 @@ redraw_1(Id, #e3d_image{width=Iw,height=Ih}) ->
 
     %% Info line.
     Percent = 100/2*H/Ih/Dist,
-    wings_io:info(io_lib:format("~.2f%", [Percent])).
+    wings_io:info(0,0,io_lib:format("~.2f%", [Percent])).
 
 draw_background(X, Y, W, H) ->
     {Wwin,Hwin} = wings_wm:win_size(),
