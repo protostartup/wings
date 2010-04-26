@@ -16,11 +16,14 @@
 -export([menu/1,command/2]).
 
 %% Utilities.
--export([select_all/1]).
+-export([init/0,select_all/1]).
 
 -include("wings.hrl").
 -import(lists, [map/2,foldl/3,reverse/1,keymember/3,keyfind/3,usort/1]).
 -import(erlang, [max/2]).
+
+init() ->
+    wings_pref:set_default(saved_selections_cycle_by_mode,false).
 
 menu(St) ->
     Help = ?__(99," (from selection or all visible objects (if no selection))"),
@@ -177,7 +180,10 @@ groups_menu(#st{ssels=Ssels}=St) ->
 	false ->
 	    [{?__(1,"Delete Group"),
 	      {delete_group,
-	       groups_and_help(?__(2,"Delete group \""), "\"", St)}},
+	       groups_and_help(?__(2,"Delete group \""), "\"", St)++
+	       [separator,
+	        {?__(22,"Delete Invalid"),invalid},
+	        {?__(23,"Delete All"),all}]}},
 	     separator,
 	     {?__(4,"Add to Group"),
 	      {add_to_group,
@@ -188,7 +194,13 @@ groups_menu(#st{ssels=Ssels}=St) ->
 	     separator,
 	     {?__(10,"Select Group"),
 	      {select_group,
-	       groups_and_help(?__(11,"Select group \""), "\"", St)}},
+	       groups_and_help(?__(11,"Select group \""), "\"", St)++
+	       [separator,
+	       {?__(24,"Next Group"),next},
+	       {?__(25,"Previous Group"),prev},
+	       {?__(26,"Cycle In Selection Mode"),saved_selections_cycle_by_mode,
+	        ?__(27,"When checked, Previous and Next Group selection cycles only within the active selection mode"),
+	        wings_menu_util:crossmark(saved_selections_cycle_by_mode)}]}},
 	     separator,
 	     {?__(13,"Union Group"),
 	      {union_group,
@@ -283,6 +295,13 @@ command({similar_area,Ask}, St) ->
 	
 command({similar_material,Ask}, St) ->
     similar_material(Ask, St);
+
+command({select_group,saved_selections_cycle_by_mode}, St) ->
+    Pref = wings_pref:get_value(saved_selections_cycle_by_mode),
+    wings_pref:set_value(saved_selections_cycle_by_mode, not Pref),
+    {save_state,St};
+command({select_group,Id}, St) when Id =:= next; Id =:= prev ->
+    {save_state,cycle_group(Id, St)};
 	
 command({select_group,Id}, St) ->
     {save_state,select_group(Id, St)};
@@ -300,6 +319,10 @@ command({new_group_name, Name}, St) ->
     {save_state,new_group_name(Name, St)};
 command(new_group, St) ->
     new_group(St);
+command({delete_group,invalid}, St) ->
+    {save_state,delete_invalid_groups(St)};
+command({delete_group,all}, St) ->
+    {save_state,St#st{ssels=gb_trees:empty()}};
 command({delete_group,Id}, #st{ssels=Ssels}=St) ->
     {save_state,St#st{ssels=gb_trees:delete(Id, Ssels)}};
 command(inverse, St) ->
@@ -476,7 +499,7 @@ update_unsel(Perm, #st{shapes=Shs0,sel=Sel}=St) ->
 union_group(Key, #st{sel=Sel0}=St) ->
     Ssel = coerce_ssel(Key, St),
     Sel = union(Sel0, Ssel),
-    St#st{sel=Sel}.
+    wings_sel:valid_sel(St#st{sel=Sel}).
 
 union(Sa, Sb) ->
     combine_sel(fun(Ss) -> gb_sets:union(Ss) end, Sa, Sb).
@@ -546,7 +569,25 @@ select_group({Mode,_}=Key, #st{ssels=Ssels}=St) ->
     ValidSel = wings_sel:valid_sel(Ssel, Mode, St),
     St#st{selmode=Mode,sel=ValidSel}.
 
-add_to_group({Mode,_}=Key, #st{ssels=Ssels}=St) ->
+%%%% Delete Groups that return an empty selection. Invalid ssels can result from
+%%%% creating or deleting geomerty.
+delete_invalid_groups(#st{ssels=Ssels}=St0) ->
+    case gb_trees:is_empty(Ssels) of
+      true ->
+        St0;
+      false ->
+        Keys = gb_trees:keys(Ssels),
+        lists:foldl(fun(Key,#st{ssels=Ss,selmode=Mode}=St) ->
+                Ssel = gb_trees:get(Key,Ss),
+                ValidSel = wings_sel:valid_sel(Ssel, Mode, St),
+                case ValidSel of
+                  [] -> St#st{ssels=gb_trees:delete(Key,Ss)};
+                  _ -> St
+                end
+        end,St0,Keys)
+    end.
+
+add_to_group({Mode,_}=Key, #st{ssels=Ssels}=St) -> 
     Ssel0 = gb_trees:get(Key, Ssels),
     Ssel1 = wings_sel:valid_sel(Ssel0, Mode, St),
     #st{sel=Sel} = possibly_convert(Mode, St),
@@ -596,6 +637,54 @@ group_mode_string(face) ->
     ?__(face, "Face selection group");
 group_mode_string(body) ->
     ?__(body, "Body selection group").
+
+%%%% Cycle Through Save Selections
+cycle_group(Dir, #st{selmode=SelMode,ssels=Ssels,sh=Sh}=St) ->
+    case gb_trees:is_empty(Ssels) of
+      true -> St;
+      false ->
+        Keys0 = gb_trees:keys(Ssels),
+        Keys1 = case wings_pref:get_value(saved_selections_cycle_by_mode) of
+          true when Sh -> Keys0;
+          true -> [Key || {Mode,_}=Key <- Keys0, Mode =:= SelMode];
+          false -> Keys0
+        end,
+        Keys = case Dir of
+          next -> Keys1;
+          prev -> lists:reverse(Keys1)
+        end,
+        cycle_ss_keys(Keys,St)
+    end.
+
+cycle_ss_keys([],St) -> St;
+cycle_ss_keys(Keys,St) ->
+    case search_ssel_keys(Keys,St,[]) of
+      {none,[]} -> [Key|_] = Keys;
+      {none,Acc} ->
+        Key = lists:last(Acc);
+      [] ->
+        [Key|_] = Keys;
+      Other ->
+        [Key|_] = Other
+    end,
+    case select_group(Key,St) of
+      #st{sel=[]} -> cycle_ss_keys(lists:delete(Key,Keys),St);
+      NewSt -> NewSt
+    end.
+
+search_ssel_keys([{Mode,_}=PKey|Keys],#st{selmode=Mode,sel=Sel,ssels=Ssels}=St,Acc) ->
+    PSel0 = gb_trees:get(PKey,Ssels),
+    PSel = wings_sel:valid_sel(PSel0, Mode, St),
+    case PSel =:= Sel of
+      true ->
+        Keys;
+      false ->
+        search_ssel_keys(Keys,St,[PKey|Acc])
+    end;
+search_ssel_keys([_|Keys],St,Acc) ->
+    search_ssel_keys(Keys,St,Acc);
+search_ssel_keys([],_St,Acc) ->
+    {none,Acc}.
 
 %%%
 %%% Select Similar.
