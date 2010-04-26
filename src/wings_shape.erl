@@ -16,6 +16,10 @@
 -export([all_selectable/1]).
 -export([show_all/1,unlock_all/1,permissions/3]).
 
+-export([draw_cube/2,selcube_bitmap/0,vertex_sel_cube_bitmap/0,
+         face_sel_cube_bitmap/0,edge_sel_cube_bitmap/0,
+         draw_light/2,light_1_bitmap/0]).
+
 -define(NEED_ESDL, 1).
 -define(NEED_OPENGL, 1).
 -include("wings.hrl").
@@ -193,7 +197,14 @@ event(close, _) ->
 event(redraw, Ost) ->
     wings_io:ortho_setup(),
     {W,H} = wings_wm:win_size(),
-    wings_io:border(0, 0, W-1, H-1, ?PANE_COLOR),
+    case wings_pref:get_value(bitmap_icons) of
+        false -> wings_io:border(0, 0, W-1, H-1, ?PANE_COLOR);
+        true ->
+          wings_io:blend(wings_pref:get_value(outliner_geograph_bg),
+            fun(Color) ->
+              wings_io:border(0, 0, W-1, H-1, Color)
+            end)
+    end,
     draw_objects(Ost),
     keep;
 event({current_state,St}, Ost0) ->
@@ -539,38 +550,57 @@ draw_objects(#ost{os=Objs0,first=First,lh=Lh,active=Active,n=N0}=Ost) ->
     R = right_pos(),
     Lines = lines(Ost),
     N = case N0-First of
-	    N1 when N1 < Lines -> N1;
-	    _ -> Lines
-	end,
-    draw_icons(N, Objs, Ost, R, Active-First, Lh-2),
-    draw_objects_1(N, Objs, Ost, R, Active-First, Lh-2).
+      N1 when N1 < Lines -> N1;
+      _ -> Lines
+    end,
+    B = wings_pref:get_value(bitmap_icons),
+    draw_icons(N, B, Objs, Ost, R, Active-First, Lh-2),
+    draw_objects_1(N, B, Objs, Ost, R, Active-First, Lh-2).
 
-draw_objects_1(0, _, _, _, _, _) -> ok;
-draw_objects_1(N, [#we{name=Name}|Wes],
-	       #ost{lh=Lh}=Ost, R, Active, Y) ->
+draw_objects_1(0, _, _, _, _, _, _) -> ok;
+draw_objects_1(N, true, [#we{name=Name}|Wes], #ost{lh=Lh}=Ost, R, Active, Y) ->
     if
-	Active == 0 ->
-	    gl:color3f(0, 0, 0.5),
-	    gl:recti(name_pos()-2, Y-?CHAR_HEIGHT, R-2, Y+4),
-	    gl:color3f(1, 1, 1);
-	true -> ok
+    Active =:= 0 ->
+      gl:color3fv(wings_pref:get_value(outliner_geograph_hl)),
+      gl:recti(name_pos()-2, Y-?CHAR_HEIGHT, R-2, Y+4),
+      gl:color3fv(wings_pref:get_value(outliner_geograph_hl_text));
+    true ->
+      gl:color3fv(wings_pref:get_value(outliner_geograph_text))
     end,
     wings_io:text_at(name_pos(), Y, Name),
     gl:color3b(0, 0, 0),
-    draw_objects_1(N-1, Wes, Ost, R, Active-1, Y+Lh).
+    draw_objects_1(N-1, true, Wes, Ost, R, Active-1, Y+Lh);
+draw_objects_1(N, false, [#we{name=Name}|Wes], #ost{lh=Lh}=Ost, R, Active, Y) ->
+    if
+    Active =:= 0 ->
+      gl:color3f(0, 0, 0.5),
+      gl:recti(name_pos()-2, Y-?CHAR_HEIGHT, R-2, Y+4),
+      gl:color3f(1, 1, 1);
+    true -> ok
+    end,
+    wings_io:text_at(name_pos(), Y, Name),
+    gl:color3b(0, 0, 0),
+    draw_objects_1(N-1, false, Wes, Ost, R, Active-1, Y+Lh).
 
-draw_icons(N, Objs, Ost, R, I, Y) ->
+draw_icons(N, B, Objs, Ost, R, I, Y) ->
     {_,Client} = wings_wm:this(),
     Wires = wings_wm:get_prop(Client, wireframed_objects),
     DrawData = {N,Ost,R,I,Y,Wires},
-    wings_io:draw_icons(fun() ->
-				foldl(fun draw_icons_1/2, DrawData, Objs)
-			end).
-
+    case B of
+    false ->
+      wings_io:draw_icons(fun() ->
+          foldl(fun draw_icons_1/2, DrawData, Objs)
+      end);
+    true ->
+      wings_io:draw_icons(fun() ->
+          foldl(fun draw_bitmap_icons/2, DrawData, Objs)
+      end)
+    end.
+			
 draw_icons_1(_, done) -> done;
 draw_icons_1(_, {0,_,_,_,_,_}) -> done;
-draw_icons_1(#we{id=Id,perm=Perm}=We, {N,#ost{sel=Sel,lh=Lh}=Ost,
-				       R,Active,Y,Wires}) ->
+draw_icons_1(#we{id=Id,perm=Perm}=We,{N,#ost{sel=Sel,lh=Lh}=Ost,
+  R,Active,Y,Wires}) ->
     EyePos = eye_pos(),
     LockPos = lock_pos(),
     SelPos = sel_pos(),
@@ -578,35 +608,123 @@ draw_icons_1(#we{id=Id,perm=Perm}=We, {N,#ost{sel=Sel,lh=Lh}=Ost,
     IconY = Y - 14,
     Wire = gb_sets:is_member(Id, Wires),
     if
-	Perm =:= 1; Perm =:= 3 ->
-	    wings_io:draw_icon(LockPos, IconY, small_locked);
-	true ->
-	    wings_io:draw_icon(LockPos, IconY, small_unlocked)
+      Perm =:= 1; Perm =:= 3 ->
+        wings_io:draw_icon(LockPos, IconY, small_locked);
+      true ->
+        wings_io:draw_icon(LockPos, IconY, small_unlocked)
     end,
     if
-	?IS_VISIBLE(Perm) ->
-	    wings_io:draw_icon(EyePos, IconY, small_eye),
-	    case Wire of
-		false ->
-		    wings_io:draw_icon(WirePos, IconY, small_object);
-		true ->
-		    wings_io:draw_icon(WirePos, IconY, small_wire)
-	    end;
-	true ->
-	    wings_io:draw_icon(EyePos, IconY, small_closed_eye)
+      ?IS_VISIBLE(Perm) ->
+        wings_io:draw_icon(EyePos, IconY, small_eye),
+        case Wire of
+          false ->
+              wings_io:draw_icon(WirePos, IconY, small_object);
+          true ->
+              wings_io:draw_icon(WirePos, IconY, small_wire)
+        end;
+      true ->
+        wings_io:draw_icon(EyePos, IconY, small_closed_eye)
     end,
     case keymember(Id, 1, Sel) of
-	false when ?IS_ANY_LIGHT(We) ->
-	    wings_io:draw_icon(SelPos, IconY, small_light);
-	false ->
-	    wings_io:draw_icon(SelPos, IconY, small_object);
-	true when ?IS_ANY_LIGHT(We) ->
-	    wings_io:draw_icon(SelPos, IconY, small_sel_light);
-	true ->
-	    wings_io:draw_icon(SelPos, IconY, small_sel)
+      false when ?IS_ANY_LIGHT(We) ->
+        wings_io:draw_icon(SelPos, IconY, small_light);
+      false ->
+        wings_io:draw_icon(SelPos, IconY, small_object);
+      true when ?IS_ANY_LIGHT(We) ->
+        wings_io:draw_icon(SelPos, IconY, small_sel_light);
+      true ->
+        wings_io:draw_icon(SelPos, IconY, small_sel)
     end,
     {N-1,Ost,R,Active-1,Y+Lh,Wires};
 draw_icons_1(_, Acc) -> Acc.
+
+draw_bitmap_icons(_, done) -> done;
+draw_bitmap_icons(_, {0,_,_,_,_,_}) -> done;
+draw_bitmap_icons(#we{id=Id,perm=Perm}=We, {N,#ost{sel=Sel,lh=Lh}=Ost,
+  R,Active,Y,Wires}) ->
+    EyePos = eye_pos()+1,
+    LockPos = lock_pos()-1,
+    SelPos = sel_pos(),
+    WirePos = wire_pos(),
+    Wire = gb_sets:is_member(Id, Wires),
+    DisCol = wings_pref:get_value(outliner_geograph_disabled),
+    Tx = wings_pref:get_value(outliner_geograph_text),
+    TxHl = wings_pref:get_value(outliner_geograph_hl_text),
+    SelCol = wings_pref:get_value(selected_color),
+
+    gl:color3fv({0.6,0.6,0.6}),
+    EyeBg = eye_bg_bitmap(),
+    gl:rasterPos2i(EyePos, Y+2),
+    gl:bitmap(14, 13, -1, 0, 13, 0, EyeBg),
+    if
+      Perm =:= 1; Perm =:= 3 ->
+        gl:color3fv(Tx),
+        L = locked_bitmap(),
+        gl:rasterPos2i(LockPos+2, Y),
+        gl:bitmap(14, 12, -1, 0, 12, 0, L);
+      true ->
+        gl:color3fv(DisCol),
+        L = unlocked_bitmap(),
+        gl:rasterPos2i(LockPos+2, Y),
+        gl:bitmap(14, 12, -1, 0, 12, 0, L)
+    end,
+    if
+      ?IS_VISIBLE(Perm) ->
+        gl:color3fv({0.0,0.0,0.0}),
+        Eye = eye_bitmap(),
+        gl:rasterPos2i(EyePos, Y+2),
+        gl:bitmap(14, 14, -1, 0, 14, 0, Eye),
+        case Wire of
+          false ->
+             gl:color3fv(DisCol),
+             draw_cube(WirePos,Y),
+             gl:color3fv(Tx),
+             ShadeCube = selcube_bitmap(),
+             gl:rasterPos2i(WirePos, Y+1),
+             gl:bitmap(14, 14, -1, 0, 14, 0, ShadeCube);
+          true ->
+             gl:color3fv(TxHl),
+               draw_cube(WirePos,Y)
+        end;
+      true ->
+        gl:color3fv({0.0,0.0,0.0}),
+        EyeCl = eye_closed_bitmap(),
+        gl:rasterPos2i(EyePos, Y+2),
+        gl:bitmap(14, 14, -1, 0, 14, 0, EyeCl)
+    end,
+    case keymember(Id, 1, Sel) of
+      false when ?IS_ANY_LIGHT(We) ->
+        gl:color3fv(Tx),
+        draw_light(SelPos,Y),
+        gl:color3fv({1.0,1.0,0.5}),
+        LightObj = light_1_bitmap(),
+        gl:rasterPos2i(SelPos, Y+2),
+        gl:bitmap(14, 15, -1, 0, 14, 0, LightObj);
+      false ->
+        gl:color3fv(Tx),
+        draw_cube(SelPos,Y),
+        gl:color3fv(DisCol),
+        SelCube = selcube_bitmap(),
+        gl:rasterPos2i(SelPos, Y+1),
+        gl:bitmap(14, 14, -1, 0, 14, 0, SelCube);
+      true when ?IS_ANY_LIGHT(We) ->
+        gl:color3fv(TxHl),
+        draw_light(SelPos,Y),
+        gl:color3fv(SelCol),
+        LightSel = light_1_bitmap(),
+        gl:rasterPos2i(SelPos, Y+2),
+        gl:bitmap(14, 15, -1, 0, 14, 0, LightSel);
+      true ->
+        gl:color3fv(TxHl),
+        draw_cube(SelPos,Y),
+        gl:color3fv(SelCol),
+        SelCube = selcube_bitmap(),
+        gl:rasterPos2i(SelPos, Y+1),
+        gl:bitmap(14, 14, -1, 0, 14, 0, SelCube)
+    end,
+    gl:color3b(0, 0, 0),
+    {N-1,Ost,R,Active-1,Y+Lh,Wires};
+draw_bitmap_icons(_, Acc) -> Acc.
 
 sel_pos() ->
     2.
@@ -621,7 +739,7 @@ lock_pos() ->
     right_pos()+16+2.
 
 wire_pos() ->
-    right_pos()+32+4.
+    right_pos()+32+3.
 
 right_pos() ->
     {W,_} = wings_wm:win_size(),
@@ -729,3 +847,220 @@ update_sel(_, #st{sel=Sel}) -> Sel.
 send_client(Message) ->
     {_,Client} = wings_wm:this(),
     wings_wm:send(Client, Message).
+
+%%%% Bitmaps for Outliner and Geometry Graph
+
+draw_cube(Pos,Y) ->
+    Cube = cube_bitmap(),
+    gl:rasterPos2i(Pos, Y+1),
+    gl:bitmap(14, 14, -1, 0, 14, 0, Cube).
+
+draw_light(Pos,Y) ->
+    Light = light_0_bitmap(),
+    gl:rasterPos2i(Pos, Y+2),
+    gl:bitmap(14, 15, -1, 0, 14, 0, Light).
+
+locked_bitmap() ->
+    <<
+    2#0111111111110000:16,
+    2#0111111111110000:16,
+    2#0111110111110000:16,
+    2#0111110111110000:16,
+    2#0111110111110000:16,
+    2#0111111111110000:16,
+    2#0111111111110000:16,
+    2#0001100011000000:16,
+    2#0001100011000000:16,
+    2#0001100011000000:16,
+    2#0000111110000000:16,
+    2#0000011100000000:16>>.
+
+unlocked_bitmap() ->
+    <<
+    2#1111111111100000:16,
+    2#1111111111100000:16,
+    2#1111101111100000:16,
+    2#1111101111100000:16,
+    2#1111101111100000:16,
+    2#1111111111100000:16,
+    2#1111111111100000:16,
+    2#0000000110001100:16,
+    2#0000000110001100:16,
+    2#0000000110001100:16,
+    2#0000000011111000:16,
+    2#0000000001110000:16>>.
+
+eye_bitmap() ->
+    %gl:color3fv({0.0,0.0,0.0}),
+    <<
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000111110000000:16,
+    2#0011100001100000:16,
+    2#0110011110010000:16,
+    2#0100111111001000:16,
+    2#0010111101010000:16,
+    2#0101111011101000:16,
+    2#0010011110010000:16,
+    2#0001100001100000:16,
+    2#0000011110000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16>>.
+
+eye_closed_bitmap() ->
+    %gl:color3fv({0.0,0.0,0.0}),
+    <<
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000111110000000:16,
+    2#0011100001100000:16,
+    2#0110000000010000:16,
+    2#0100000000001000:16,
+    2#0000000000000000:16,
+    2#0100000000001000:16,
+    2#0010000000010000:16,
+    2#0001100001100000:16,
+    2#0000011110000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16>>.
+
+eye_bg_bitmap() ->
+    %gl:color3fv({0.7,0.7,0.7}),
+    <<
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000111110000000:16,
+    2#0011111111100000:16,
+    2#0111111111110000:16,
+    2#1111111111111000:16,
+    2#1111111111111100:16,
+    2#0111111111111000:16,
+    2#1111111111111100:16,
+    2#0111111111111000:16,
+    2#0011111111110000:16,
+    2#0001111111100000:16,
+    2#0000011110000000:16>>.
+
+cube_bitmap() ->
+    <<
+    2#0000001110000000:16,
+    2#0000110101100000:16,
+    2#0011000100011000:16,
+    2#0100000100000100:16,
+    2#0100000100000100:16,
+    2#0100000100000100:16,
+    2#0100000100000100:16,
+    2#0100000100000100:16,
+    2#0100011011000100:16,
+    2#0101100000110100:16,
+    2#0110000000001100:16,
+    2#0001110001110000:16,
+    2#0000001110000000:16,
+    2#0000000000000000:16>>.
+
+edge_sel_cube_bitmap() ->
+    <<
+    2#0000000110000000:16,
+    2#0000000101100000:16,
+    2#0000000100011000:16,
+    2#0000000100000100:16,
+    2#0000000100000100:16,
+    2#0000000100000100:16,
+    2#0000000100000100:16,
+    2#0000000100000100:16,
+    2#0000000011000100:16,
+    2#0000000000110100:16,
+    2#0000000000001100:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16>>.
+
+selcube_bitmap() ->
+    <<
+    2#0000000000000000:16,
+    2#0000001010000000:16,
+    2#0000111011100000:16,
+    2#0011111011111000:16,
+    2#0011111011111000:16,
+    2#0011111011111000:16,
+    2#0011111011111000:16,
+    2#0011111011111000:16,
+    2#0011100100111000:16,
+    2#0010011111001000:16,
+    2#0001111111110000:16,
+    2#0000001110000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16>>.
+
+face_sel_cube_bitmap() ->
+    <<
+    2#0000000000000000:16,
+    2#0000000010000000:16,
+    2#0000000011100000:16,
+    2#0000000011111000:16,
+    2#0000000011111000:16,
+    2#0000000011111000:16,
+    2#0000000011111000:16,
+    2#0000000011111000:16,
+    2#0000000000111000:16,
+    2#0000000000001000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16>>.
+
+vertex_sel_cube_bitmap() ->
+    <<
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0110000000000000:16,
+    2#1111000000000000:16,
+    2#0110000000000000:16,
+    2#0000000000000000:16,
+    2#0000001110000000:16,
+    2#0000001110000000:16,
+    2#0000001110000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16>>.
+
+light_0_bitmap() ->
+    <<
+    2#0000001110000000:16,
+    2#0000011011000000:16,
+    2#0000010101000000:16,
+    2#0000011011000000:16,
+    2#0000011111000000:16,
+    2#0000110101100000:16,
+    2#0001000100010000:16,
+    2#0001000100010000:16,
+    2#0010001010001000:16,
+    2#0010000000001000:16,
+    2#0010000000001000:16,
+    2#0001000000010000:16,
+    2#0001000000010000:16,
+    2#0000110001100000:16,
+    2#0000001110000000:16>>.
+
+light_1_bitmap() ->
+    <<
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000000000000000:16,
+    2#0000001010000000:16,
+    2#0000111011100000:16,
+    2#0000111011100000:16,
+    2#0001110101110000:16,
+    2#0001111111110000:16,
+    2#0001111111110000:16,
+    2#0000111111100000:16,
+    2#0000111111100000:16,
+    2#0000001110000000:16,
+    2#0000000000000000:16>>.

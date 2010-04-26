@@ -19,6 +19,7 @@
 	 get_scene_value/0,get_scene_value/1,get_scene_value/2,
 	 set_scene_value/2,set_scene_default/2,
 	 delete_scene_value/0,delete_scene_value/1]).
+-export([pref/1,pref/2,recent_prefs/0]).
 
 -define(NEED_ESDL, 1).	  %% Some keybindings
 -include("wings.hrl").
@@ -40,6 +41,7 @@ load() ->
 	    %% No preference file found. We must turn
 	    %% on the advanced menus.
 	    set_value(advanced_menus, true),
+	    set_value(legacy_colors_checked, true),
 	    ok;
 	PrefFile ->
 	    io:format("wings-~s\nReading preferences from: ~s\n",
@@ -48,6 +50,7 @@ load() ->
 		{ok,List0} ->
 		    List = clean(List0),
 		    catch ets:insert(wings_state, List),
+		    check_legacy_colors(List),
 		    win32_window_layout(),
 		    no_more_basic_menus();
 		{error,_Reason} ->
@@ -339,23 +342,23 @@ defaults() ->
 
      %% The remaining items are constants. The generated code
      %% will be much more compact.
-     {background_color,{0.8,0.8,0.8}},
-     {info_color,{0.0,0.0,0.0}},
-     {info_background_color,{0.8,0.8,0.8,0.5}},
+     {background_color,{0.2,0.2,0.2}},
+     {info_color,{1.0,1.0,1.0}},
+     {info_background_color,{0.15,0.46,0.8,0.5}},
      {info_enhanced_text,false},
      {info_text_on_hilite,false},
-     {grid_color,{0.7,0.7,0.7}},
+     {grid_color,{0.3,0.3,0.3}},
      {edge_color,{0.0,0.0,0.0}},
      {hard_edge_color,{1.0,0.5,0.0}},
      {selected_color,{0.65,0.0,0.0}},
      {unselected_hlite,{0.0,0.65,0.0}},
      {selected_hlite,{0.70,0.70,0.0}},
-     {x_color,{0.6,0.0,0.0}},
-     {y_color,{0.0,0.6,0.0}},
-     {z_color,{0.0,0.0,0.6}},
-     {neg_x_color,{0.6,0.6,0.6}},
-     {neg_y_color,{0.6,0.6,0.6}},
-     {neg_z_color,{0.6,0.6,0.6}},
+     {x_color,{0.75,0.0,0.0}},
+     {y_color,{0.0,0.75,0.0}},
+     {z_color,{0.0,0.4,0.75}},
+     {neg_x_color,{0.8,0.8,0.8}},
+     {neg_y_color,{0.8,0.8,0.8}},
+     {neg_z_color,{0.8,0.8,0.8}},
 
      {vertex_size,4.0},
      {selected_vertex_size,5.0},
@@ -380,10 +383,10 @@ defaults() ->
      {autosave_time,10},
      {active_vector_size,1.0},
      {active_vector_width,2.0},
-     {active_vector_color,{0.0,0.0,0.65}},
+     {active_vector_color,{0.0,1.0,0.0}},
      {normal_vector_size,0.3},
      {normal_vector_width,2.0},
-     {normal_vector_color,{0.0,0.0,0.65}},
+     {normal_vector_color,{0.0,1.0,0.0}},
      {smart_highlighting,false},
      {material_default,{1.0,1.0,1.0}},
 
@@ -407,7 +410,7 @@ defaults() ->
      {use_mirror_for_sels,true},
      {clip_plane_color,{0.8,0.3,0.0}},
      {clip_plane_size,1.5},
-     {highlight_aim_at_selected,false},
+     {highlight_aim_at_selected,true},
      {highlight_aim_at_unselected,true},
      {hilite_select,false},
      {start_in_tweak, false},
@@ -456,10 +459,10 @@ defaults() ->
      %% Drag preferences.
      {drag_custom,false},
      {drag_cam_dist_abs,true},
-     {drag_speed_abs,5.0},
+     {drag_speed_abs,8.5},
      {drag_cam_dist_relative,true},
-     {drag_speed_relative,5.0},
-     {drag_speed_rotate,5.0},
+     {drag_speed_relative,8.5},
+     {drag_speed_rotate,8.5},
 
      %% Proxy preferences.
      {proxy_shaded_edge_style,some},
@@ -467,33 +470,43 @@ defaults() ->
      {proxy_moving_opacity,1.0},
 
      %% User interface preferences.
-     {menu_text,{0.0,0.0,0.0}},
-     {menu_hilite,{0.0,0.0,0.5}},
+     {menu_text,{0.76,0.76,0.76}},
+     {menu_hilite,{0.07,0.4,0.76}},
      {menu_hilited_text,{1.0,1.0,1.0}},
-     {menu_color,{0.75,0.75,0.75,0.99}},
-     {dialog_text,{0.0,0.0,0.0}},
-     {dialog_disabled,{0.5,0.5,0.5}},
-     {dialog_color,{0.75,0.75,0.75,0.99}},
-     {title_active_color,{0.41,0.55,0.41,1.0}},
-     {title_passive_color,{0.325,0.4,0.325,1.0}},
+     {menu_color,{0.13,0.13,0.13,0.8}},
+     {dialog_text,{0.76,0.76,0.76}},
+     {dialog_disabled,{0.32,0.32,0.32}},
+     {dialog_color,{0.13,0.13,0.13,0.9}},
+     {title_active_color,{0.07,0.4,0.7,0.9}},
+     {title_passive_color,{0.05,0.27,0.5,0.9}},
      {title_text_color,{1.0,1.0,1.0}},
-     {menu_bar_bg,{0.52,0.52,0.52}},
-     {menubar_text,{0.0,0.0,0.0}},
-     {info_line_bg,{0.52,0.52,0.52}},
-     {info_line_text,{0.0,0.0,0.0}},
+     {menu_bar_bg,{0.32,0.32,0.32}},
+     {menubar_text,{1.0,1.0,1.0}},
+     {info_line_bg,{0.05,0.27,0.56}},
+     {info_line_text,{1.0,1.0,1.0}},
      {no_progress_bar,false},
      {interface_icons,bluecube},
      {objects_in_outliner,true},
      {aa_edges,false},
      {extended_toolbar,true},
+     {bitmap_icons, false},
+     {menu_toolbar, false},
+     {menu_abort, false},
 
      %% Console
      {console_width,80},
      {console_height,12},
      {console_save_lines,100},
      {console_color,{0.0,0.0,0.0}},
-     {console_text_color,{0.0,1.0,0.0}},
+     {console_text_color,{0.07,0.4,0.76}},
      {console_cursor_color,{1.0,1.0,1.0}},
+
+     %% Outliner and Geometry Graph
+     {outliner_geograph_bg,{0.32,0.32,0.32,0.65}},
+     {outliner_geograph_text,{0.76,0.76,0.76}},
+     {outliner_geograph_hl,{0.07,0.4,0.76}},
+     {outliner_geograph_hl_text,{1.0,1.0,1.0}},
+     {outliner_geograph_disabled,{0.2,0.2,0.2}},
 
      %% Undos.
      {num_undo_levels,32},
@@ -607,3 +620,479 @@ bad_command(_) -> false.
 
 build_command(Name, Names) ->
     foldl(fun(N, A) -> {N,A} end, Name, Names).
+
+%% Check for legacy colors so as not to overwrite older prefs with new defaults
+check_legacy_colors(List) ->
+    case get_value(legacy_colors_checked) of
+      true -> ok;
+      _ ->
+        foreach(fun({Key,Value}) ->
+          case lists:keymember(Key, 1, List) of
+            true -> ok;
+            _ -> set_value(Key, Value)
+          end
+        end, legacy_colors()),
+        set_value(legacy_colors_checked, true)
+    end.
+
+colors(ColorPrefs, List) ->
+%% Return a list of {key,value} pairs, for the ColorPrefs keys found in List
+    foldl(fun({Pref,_},Acc) ->
+        case lists:keyfind(Pref, 1, List) of
+          false -> Acc;
+          P -> [P|Acc]
+        end
+    end,[],ColorPrefs).
+
+%% Legacy Colors
+legacy_colors() ->
+    [{background_color,{0.8,0.8,0.8}},
+     {info_color,{0.0,0.0,0.0}},
+     {info_background_color,{0.8,0.8,0.8,0.5}},
+     {grid_color,{0.7,0.7,0.7}},
+     {edge_color,{0.0,0.0,0.0}},
+     {hard_edge_color,{1.0,0.5,0.0}},
+     {selected_color,{0.65,0.0,0.0}},
+     {unselected_hlite,{0.0,0.65,0.0}},
+     {selected_hlite,{0.70,0.70,0.0}},
+     {x_color,{0.6,0.0,0.0}},
+     {y_color,{0.0,0.6,0.0}},
+     {z_color,{0.0,0.0,0.6}},
+     {neg_x_color,{0.6,0.6,0.6}},
+     {neg_y_color,{0.6,0.6,0.6}},
+     {neg_z_color,{0.6,0.6,0.6}},
+     {vertex_color,{0.0,0.0,0.0}},
+     {masked_vertex_color,{0.5,1.0,0.0,0.8}},
+     {active_vector_color,{0.0,0.0,0.65}},
+     {normal_vector_color,{0.0,0.0,0.65}},
+     {material_default,{1.0,1.0,1.0}},
+     {clip_plane_color,{0.8,0.3,0.0}},
+
+     %% User interface preferences.
+     {menu_text,{0.0,0.0,0.0}},
+     {menu_hilite,{0.0,0.0,0.5}},
+     {menu_hilited_text,{1.0,1.0,1.0}},
+     {menu_color,{0.75,0.75,0.75,0.99}},
+     {dialog_text,{0.0,0.0,0.0}},
+     {dialog_disabled,{0.5,0.5,0.5}},
+     {dialog_color,{0.75,0.75,0.75,0.99}},
+     {title_active_color,{0.41,0.55,0.41,1.0}},
+     {title_passive_color,{0.325,0.4,0.325,1.0}},
+     {title_text_color,{1.0,1.0,1.0}},
+     {menu_bar_bg,{0.52,0.52,0.52}},
+     {menubar_text,{0.0,0.0,0.0}},
+     {info_line_bg,{0.52,0.52,0.52}},
+     {info_line_text,{0.0,0.0,0.0}},
+
+     %% Console
+     {console_color,{0.0,0.0,0.0}},
+     {console_text_color,{0.0,1.0,0.0}},
+     {console_cursor_color,{1.0,1.0,1.0}},
+
+     %% Outliner and Geometry Graph
+     {outliner_geograph_bg,{0.52,0.52,0.52,1.0}},
+     {outliner_geograph_text,{0.0,0.0,0.0}},
+     {outliner_geograph_hl,{0.0,0.0,0.5}},
+     {outliner_geograph_hl_text,{1.0,1.0,1.0}},
+     {outliner_geograph_disabled,{0.4,0.4,0.4}}].
+
+%% Load or Save a basic preference file (not the main Wings preference file)
+%% Command is initiated in wings_file.erl
+pref({load,Request,St}) ->
+    case Request of
+      custom_theme ->
+        pref(load);
+      classic_theme ->
+        LegacyColors = legacy_colors(),
+        load_pref_category([{graphical,true}],[{graphical,LegacyColors}],St),
+        init_opengl(),
+        keep;
+      dark_blue_theme ->
+        LegacyColors = legacy_colors(),
+        Defaults = defaults(),
+        Colors = colors(LegacyColors, Defaults),
+        load_pref_category([{graphical,true}],[{graphical,Colors}],St),
+        init_opengl(),
+        keep;
+      Key ->
+        Recent0 = get_value(recent_prefs),
+        PrefDir = lists:nth(Key, Recent0),
+        case filelib:is_file(PrefDir) of
+          true ->
+              wings_pref:set_value(pref_directory, PrefDir),
+              pref(load);
+          false ->
+              Recent = lists:delete_nth(Recent0, Key),
+              wings_pref:set_value(recent_prefs, Recent),
+              wings_u:error(?__(11,"This file has been moved or deleted."))
+        end
+    end;
+
+pref(Action) -> %% load|save dialog
+    Disable = fun (is_disabled, {_Var,_I, Store}) ->
+              not gb_trees:get(hotkeys,Store);
+              (_, _) -> void
+              end,
+    case Action of
+        load ->
+          Title = ?__(1,"Load Preference Subset"),
+          Dialog = open_dialog,
+          Options =
+            {hframe,[{vradio,[{?__(9,"Merge hotkeys"),merge},
+                              {?__(10,"Remove existing hotkeys first"),remove}],
+                               merge}],[{hook,Disable}]};
+        save ->
+          Title = ?__(2,"Save Preference Subset"),
+          Dialog = save_dialog,
+          Options = panel
+    end,
+    FileName = ?__(12,"Preference Subset.pref"),
+    Directory = case get_value(pref_directory) of
+      undefined -> get_pref_directory(FileName);
+      Dir -> Dir
+    end,
+    Qs = [{hframe,[{vframe,[{?__(3,"Graphical Settings"),true,[{key,graphical}]},
+          {?__(4,"Camera Settings"),false,[{key,camera}]},
+          {?__(5,"Hotkeys"),false,[{key,hotkeys}]}]},
+         {vframe,
+          [{?__(6,"Window and View Settings"),false,[{key,windows}]},
+           {?__(7,"Constraints"),false,[{key,constraints}]},
+           {?__(8,"General Settings"),false,[{key,settings}]}]}]},
+          Options,
+         {button, {text, Directory, [{key, pref_directory},
+            {props, [{dialog_type, Dialog},
+            {extensions, [{".pref", FileName}]}]}]}}],
+    wings_ask:dialog(true, Title, Qs,
+        fun(Res) -> {file,{pref,{Action,Res}}} end).
+
+pref({save, Res}, St) -> %save a .pref
+    DelayedPrefs = ets:tab2list(wings_delayed_update),
+    Prefs0 = ets:tab2list(wings_state),
+    List = foldl(fun({Key, _}=Pref, Acc) ->
+            lists:keystore(Key, 1, Acc, Pref)
+        end, Prefs0, DelayedPrefs),
+    Defaults = defaults(),
+    Prefs = save_pref_category(Res, List, Defaults, St, []),
+    {_,Dir} = lists:keyfind(pref_directory,1,Res),
+    write_pref(Dir, Prefs);
+pref({load, Res0}, St) -> %% load a .pref
+    Res = treat_hotkeys(Res0),
+    {_,Dir} = lists:keyfind(pref_directory,1,Res),
+    case lists:suffix(".pref",Dir) of
+      true ->
+        case file:consult(Dir) of
+          {ok,List} ->
+            load_pref_category(sort(Res),List,St),
+            init_opengl();
+          {error,Reason} ->
+          io:format(Reason),
+            ok
+        end;
+      false ->
+        wings_u:error(?__(13,"Not a .pref file"))
+    end.
+
+%% Find the preferenece directory
+get_pref_directory(FileName) ->
+    DefaultDir = case old_pref_file() of
+      none ->
+        case new_pref_file() of
+          none -> [];
+          PrefDir -> PrefDir
+        end;
+      PrefDir -> PrefDir
+    end,
+    case DefaultDir of
+      [] -> wings_pref:get_value(current_directory);
+      Other ->
+        Str0 = lists:reverse(Other),
+        {Str1,_} = split_dir(Str0, []),
+        Str = lists:reverse(Str1),
+        Str ++ FileName
+    end.
+
+split_dir([$/|_]=Str, FileName) ->
+    {Str, FileName};
+split_dir([$\\|_]=Str, FileName) ->
+    {Str, FileName};
+split_dir([Char|Str], Acc) ->
+    split_dir(Str, [Char|Acc]).
+
+write_pref(Dir, ColorPref) ->
+    Format = "~p. \n",
+    PostProcess = case os:type() of
+                      {win32,_} -> fun insert_crs/1;
+                      _ -> fun(L) -> L end
+                  end,
+    Write = fun(Entry) -> PostProcess(io_lib:format(Format, [Entry])) end,
+    Str = lists:map(Write, ColorPref),
+    catch file:write_file(Dir, Str),
+    update_recent_prefs(Dir),
+    set_value(pref_directory,Dir).
+
+treat_hotkeys(Res) ->
+    case lists:member(merge,Res) of
+      true ->
+        lists:delete(merge,Res);
+      false ->
+        case lists:member(remove,Res) of
+          true ->
+            List = ets:tab2list(wings_state),
+            lists:foreach(fun({Hotkey,_,_}) ->
+                      ets:delete(wings_state,Hotkey);
+                            (_) -> ok
+                    end, List),
+            lists:delete(remove,Res);
+          false -> Res
+        end
+    end.
+
+init_opengl() ->
+    case wings_io:is_maximized() of
+      false ->
+        {W, H} = TopSize = get_value(window_size),
+        put(wm_top_size, TopSize),
+        wings_wm:reinit_opengl(),
+        wings_wm:resize_windows(W, H),
+        wings_wm:dirty();
+      true ->
+        wings_wm:reinit_opengl(),
+        wings_wm:dirty()
+    end.
+
+update_recent_prefs(Dir) ->
+    Recent0 = get_value(recent_prefs,[]),
+    Recent1 = [Dir|lists:delete(Dir,Recent0)],
+    Recent = lists:sublist(Recent1, 5),
+    set_value(recent_prefs, Recent).
+
+recent_prefs() ->
+    Recent = get_value(recent_prefs,[]),
+    recent_prefs(Recent,1).
+recent_prefs([Dir|Recent],1) ->
+    case lists:suffix(".pref",Dir) of
+      true ->
+        {_,Pref} = split_dir(lists:reverse(Dir),[]),
+        [separator,{Pref,1,recent_pref_help()}|recent_prefs(Recent,2)];
+      false ->
+        P0 = get_value(recent_prefs),
+        P = P0 -- Dir,
+        set_value(recent_prefs,P),
+        recent_prefs(Recent,1)
+    end;
+recent_prefs([Dir|Recent],N) ->
+    case lists:suffix(".pref",Dir) of
+      true ->
+        {_,Pref} = split_dir(lists:reverse(Dir),[]),
+        [{Pref,N,recent_pref_help()}|recent_prefs(Recent,N+1)];
+      false ->
+        P0 = get_value(recent_prefs),
+        P = P0 -- Dir,
+        set_value(recent_prefs,P),
+        recent_prefs(Recent,N)
+    end;
+recent_prefs([],_) -> [].
+
+recent_pref_help() -> ?__(1,"Load a recent Preference Subset").
+
+find_size_string([$s,$i,$z,$e|_]) -> true;
+find_size_string([$w,$i,$d,$t,$h|_]) -> true;
+find_size_string([$p,$r,$o,$x,$y|_]) -> true;
+find_size_string([_|Str]) ->
+    find_size_string(Str);
+find_size_string([]) -> false.
+
+find_graphical_string([$s,$h,$o,$w|_]) -> true;
+find_graphical_string([$l,$a,$n,$g|_]) -> true;
+find_graphical_string([$f,$o,$n,$t|_]) -> true;
+find_graphical_string([$a,$a|_]) -> true;
+find_graphical_string([$_,$h,$i,$l,$i,$t,$e|_]) -> true;
+find_graphical_string([$t,$o,$o,$l,$b,$a,$r|_]) -> true;
+find_graphical_string([$p,$r,$o,$x,$y|_]) -> true;
+find_graphical_string([$l,$i,$g,$h,$t|_]) -> true;
+find_graphical_string([$o,$b,$j,$e,$c,$t,$s,$_,$i,$n,$_|_]) -> true;
+find_graphical_string([$i,$c,$o,$n|_]) -> true;
+find_graphical_string([$a,$x,$i,$s|_]) -> true;
+find_graphical_string([$s,$e,$l,$e,$c,$t,$i,$o,$n,$_,$s|_]) -> true;
+find_graphical_string([_|Str]) -> find_graphical_string(Str);
+find_graphical_string([]) -> false.
+
+find_const_string([$c,$o,$n,$_|_]) -> true;
+find_const_string([_|Str]) -> find_const_string(Str);
+find_const_string([]) -> false.
+
+find_cam_string([$n,$u,$m,$_,$b,$u,$t,$t,$o|_]) -> true;
+find_cam_string([$n,$e,$g,$a,$t,$i,$v,$e,$_|_]) -> true;
+find_cam_string([$h,$i,$g,$h,$l,$i,$g,$h,$t,$_,$a,$i,$m|_]) -> true;
+find_cam_string([$c,$a,$m,$_|_]) -> true;
+find_cam_string([$p,$a,$n,$_|_]) -> true;
+find_cam_string([$z,$o,$o,$m|_]) -> true;
+find_cam_string([$w,$h,$_|_]) -> true;
+find_cam_string([$w,$h,$e,$e,$l,$_|_]) -> true;
+find_cam_string([$v,$i,$e,$w,$e,$r,$_,$f|_]) -> true;
+find_cam_string([$g,$_,$c,$a,$m,$_|_]) -> false;
+find_cam_string([$c,$a,$m,$e,$r,$a|_]) -> true;
+find_cam_string([_|Str]) -> find_cam_string(Str);
+find_cam_string([]) -> false.
+
+%% Save .pref
+save_pref_category([{pref_directory,_}|Options], List, Defaults, St, Acc) ->
+    save_pref_category(Options, List, Defaults, St, Acc);
+save_pref_category([{constraints,Bool}|Options], List, Defaults, St, Acc0) ->
+    Const = foldl(fun({Key,Value}, A) when is_atom(Key),is_float(Value);
+                                           is_atom(Key),is_atom(Value) ->
+                        KeyStr = atom_to_list(Key),
+                        case find_const_string(KeyStr) of
+                          true ->
+                            [lists:keyfind(Key, 1, List)|A];
+                          false -> A
+                        end;
+                     (_, A) -> A
+        end, [], Defaults),
+    Acc = if Bool -> [{constraints,sort(Const)}|Acc0]; true -> Acc0 end,
+    save_pref_category(Options, List--Const, Defaults--Const, St, Acc);
+save_pref_category([{hotkeys,Bool}|Options], List, Defaults, St, Acc0) ->
+    Hotkeys = foldl(fun({_,_,_}=H, A) ->
+                          [H|A];
+                       (_,A) -> A
+                    end, [], List),
+    Acc = if Bool -> [{hotkeys,sort(Hotkeys)}|Acc0]; true -> Acc0 end,
+    save_pref_category(Options, List--Hotkeys, Defaults--Hotkeys, St, Acc);
+save_pref_category([{camera,Bool}|Options], List, Defaults, St, Acc0) ->
+    Camera = foldl(fun({_,Value},A) when  is_tuple(Value) -> A;
+                     ({{_,_},_},A) -> A;
+                     ({Key,_}=P, A) when is_atom(Key)->
+                        KeyStr = atom_to_list(Key),
+                        case find_cam_string(KeyStr) of
+                          true -> [P|A];
+                          false -> A
+                        end;
+                     (_,A) -> A
+        end, [], List),
+    Acc = if Bool -> [{camera,sort(Camera)}|Acc0]; true -> Acc0 end,
+    save_pref_category(Options, List--Camera, Defaults--Camera, St, Acc);
+save_pref_category([{settings,Bool}|Options], List, Defaults, St, Acc0) ->
+    Settings = foldl(fun({recent_files,_},A) -> A;
+                   ({last_axis,_},A) -> A;
+                   ({current_directory,_},A) -> A;
+                   ({recent_prefs,_},A) -> A;
+                   ({_,_}=P,A) -> [P|A];
+                   (_, A) -> A
+        end, [], List),
+    Acc = if Bool -> [{settings,sort(Settings)}|Acc0]; true -> Acc0 end,
+    save_pref_category(Options, List--Settings, Defaults--Settings, St, Acc);
+save_pref_category([{graphical,Bool}|Options], List, Defaults, St, Acc0) ->
+    Visual = foldl(fun({Key,Value}, A) when is_atom(Key),is_float(Value) ->
+                         KeyStr = atom_to_list(Key),
+                         case find_size_string(KeyStr) of
+                           true ->
+                             [lists:keyfind(Key, 1, List)|A];
+                           false -> A
+                         end;
+                     ({_,Value},A) when is_tuple(Value) -> A;
+                     ({Key,_},A) when is_atom(Key) ->
+                         KeyStr = atom_to_list(Key),
+                         case find_graphical_string(KeyStr) of
+                           true ->
+                             [lists:keyfind(Key, 1, List)|A];
+                           false -> A
+                         end;
+                     (_,A) -> A
+        end, [], List),
+    LegacyColors = legacy_colors(),
+    Colors = colors(LegacyColors, List),
+    CS = sort(lists:merge(Visual,Colors)),
+    Acc = if Bool -> [{graphical,CS}|Acc0];
+             true -> Acc0 end,
+    save_pref_category(Options, List--CS, Defaults--CS, St, Acc);
+save_pref_category([{windows,Bool}|Options], List, Defaults, St, Acc0) ->
+    C1 = lists:keyfind(console_height,1,List),
+    C2 = lists:keyfind(console_save_lines,1,List),
+    C3 = lists:keyfind(console_width,1,List),
+    WinSize = lists:keyfind(window_size,1,List),
+    WP = wings:save_windows_1(wings_wm:windows()),
+    Windows = [WinSize,C1,C2,C3|WP],
+    Acc = if Bool -> [{windows,Windows}|Acc0];
+             true -> Acc0 end,
+    NewList = (List--Windows)--[{saved_windows,WP}],
+    save_pref_category(Options, NewList,  Defaults--Windows, St, Acc);
+save_pref_category([], _, _, _, Acc) -> Acc.
+
+%% Load .pref
+load_pref_category([{pref_directory,Dir}|Options], List, St) ->
+    set_value(pref_directory,Dir),
+    update_recent_prefs(Dir),
+    load_pref_category(Options, List, St);
+load_pref_category([{_,false}|Options], List, St) ->
+    load_pref_category(Options, List, St);
+load_pref_category([{graphical,true}|Options], List, St) ->
+%% Load color preferences
+    Colors = case lists:keyfind(graphical, 1, List) of
+        {_,C} -> C;
+        false -> []
+    end,
+    catch wings_pref_dlg:set_values(Colors, St),
+    load_pref_category(Options, List, St);
+load_pref_category([{windows,true}|Options], List, St) ->
+%% Load preference windows and remove any old windows
+    OldWindows = wings:save_windows_1(wings_wm:windows()),
+    case lists:keyfind(windows, 1, List) of
+        {_,Windows0} ->
+            foreach(fun
+              ({_,Prop}=P) when is_integer(Prop) ->
+                ets:insert(wings_state,P);
+              ({window_size,_}=P) ->
+                ets:insert(wings_state,P),
+                init_opengl();
+              (Window) ->
+                Name = element(1,Window),
+                case wings_wm:is_window(Name) of
+                  true when Name =:= geom ->
+                    Props = element(4,Window),
+                    case proplists:get_bool(toolbar_hidden, Props) of
+                      true -> wings_wm:hide({toolbar,geom});
+                      false -> ok
+                    end,
+                    wings:set_geom_props(Props,Name),
+                    Pos = element(2,Window),
+                    Size = element(3,Window),
+                    wings_wm:move(Name,Pos,Size);
+                  true ->
+                    wings_wm:delete(Name),
+                    wings:restore_windows_1([Window], St);
+                  false ->
+                    wings:restore_windows_1([Window], St)
+                end
+            end,Windows0),
+            %% Delete old windows
+            foreach(fun(OldWindow) ->
+                OldName = element(1,OldWindow),
+                case lists:keymember(OldName,1,Windows0) of
+                  false -> wings_wm:delete(OldName);
+                  _ -> ok
+                end
+              end, OldWindows);
+        false -> ok
+    end,
+    load_pref_category(Options, List, St);
+% Load Hotkeys
+load_pref_category([{hotkeys,true}|Options], List, St) ->
+    case lists:keyfind(hotkeys, 1, List) of
+        {_,Prefs} ->
+          foreach(fun(Hkey) ->
+            ets:insert(wings_state, Hkey)
+          end, clean(Prefs));
+        false -> wings_hotkey:set_default()
+    end,
+    load_pref_category(Options, List, St);
+%% Load all other prefs
+load_pref_category([{Other,true}|Options], List, St) ->
+    case lists:keyfind(Other, 1, List) of
+        {_,Prefs} ->
+          foreach(fun(P) ->
+            ets:insert(wings_state, P)
+          end, clean(Prefs));
+        false -> ok
+    end,
+    load_pref_category(Options, List, St);
+load_pref_category([], _, _) -> ok.

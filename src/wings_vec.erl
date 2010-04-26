@@ -62,6 +62,7 @@ do_ask_1(_, [], Res, _, St, Cb) ->
     wings_wm:later(build_result(Res, Cb, St)),
     keep;
 do_ask_1(Modes, Do0, Done, Flags, NewSt, Cb) ->
+    wings_menu:kill_menus(),
     Do = add_help_text(Do0),
     Mag = member(magnet, Flags),
     Ss = #ss{cb=Cb,mag=Mag,selmodes=Modes,new_st=NewSt,

@@ -16,7 +16,7 @@
 -export([redraw/1,redraw/2,init_opengl/1,command/2]).
 -export([mode_restriction/1,clear_mode_restriction/0,get_mode_restriction/0]).
 -export([ask/3]).
--export([save_windows/0]).
+-export([save_windows/0,save_windows_1/1,restore_windows_1/2,set_geom_props/2]).
 -export([handle_drop/3]).
 -export([init_menubar/0]).
 -export([highlight_aim_setup/1]).
@@ -327,8 +327,9 @@ handle_event_2(#mousebutton{x=X,y=Y}=Ev0, #st{sel=Sel}=St0) ->
             end
         end
     end;
+
 handle_event_2(Ev, St) -> handle_event_3(Ev, St).
-        
+
 handle_event_3(#keyboard{}=Ev, St0) ->
     case do_hotkey(Ev, St0) of
 	next -> keep;
@@ -408,7 +409,13 @@ handle_event_3({external, win32_start_maximized}, _St) ->
 handle_event_3({external,Op}, St) ->
     wpa:handle_external(Op,St),
     keep;
-handle_event_3(ignore, _St) -> keep.
+handle_event_3(ignore, _St) ->
+    keep;
+handle_event_3({adv_menu_abort, Ev}, _St) ->
+    This = wings_wm:actual_focus_window(),
+    wings_wm:send(This,Ev);
+handle_event_3({menu_toolbar,_}=Ev, St) ->
+    menu_toolbar_action(Ev, St).
 
 do_hotkey(Ev, #st{sel=[]}=St0) ->
     case wings_pref:get_value(use_temp_sel) of
@@ -1732,4 +1739,93 @@ hotkey_select_setup(Cmd,St0) ->
     case wings_pick:do_pick(X, Y, St0) of
       {add,_,St} -> {Cmd,St};
       _Other     -> {Cmd,St0}
+    end.
+%%%
+%%% Menu toolbar
+%%%
+
+%% Do action and reload new menu. Menus are killed if an error message appears,
+%% or if the cmd leads to a drag sequence.
+menu_toolbar_action({menu_toolbar, {B, OrigXY,repeat}}, St) ->
+    Cmd = case B of
+        1 -> repeat_drag;
+        2 -> repeat_args;
+        3 -> repeat;
+        4 -> repeat_drag;
+        5 -> undo
+    end,
+    wings_wm:send_after_redraw(geom, {menu_toolbar,OrigXY}),
+    do_command({edit,Cmd}, none, St#st{temp_sel=none});
+menu_toolbar_action({menu_toolbar, {B, OrigXY, Side}}, #st{selmode=Mode}=St)
+  when B =:= 4; B =:= 5 ->
+    Cmd = case {Side, B} of
+      {history,4} -> {edit,redo};
+      {history,5} -> {edit,undo};
+      {edge,4} when Mode =:= edge -> {select,{edge_loop,next_edge_loop}};
+      {edge,5} when Mode =:= edge -> {select,{edge_loop,prev_edge_loop}};
+      {_,4} -> {select,more};
+      {_,5} -> {select,less}
+    end,
+    wings_wm:send_after_redraw(geom, {menu_toolbar,OrigXY}),
+    do_command(Cmd, none, St#st{temp_sel=none});
+menu_toolbar_action({menu_toolbar,{{X,_},Cmd,St}}, _St) ->
+    Menu =  case Cmd of
+        select -> wings_sel_cmd:menu(St#st{temp_sel=none});
+        tools -> tools_menu(St#st{temp_sel=none})
+    end,
+    {_,X0,Y0} = wings_wm:local_mouse_state(),
+    {_,Y} = wings_wm:local2global(X0, Y0),
+    wings_menu:popup_menu(X, Y + ?LINE_HEIGHT div 2, Cmd, Menu);
+menu_toolbar_action({menu_toolbar,{new_mode,1,OrigXY,Side}}, #st{selmode=Side}=St) ->
+    menu_toolbar_action({menu_toolbar,OrigXY}, St);
+menu_toolbar_action({menu_toolbar,{new_mode,B,OrigXY,Side}}, St) ->
+    menu_toolbar_action({menu_toolbar,{B,OrigXY,Side}}, St);
+menu_toolbar_action({menu_toolbar,{B,OrigXY,Side}}, #st{sel=Sel}=St0) ->
+    S = select,
+    {Cmd, St, Kill} = case {Side, Sel} of
+        {deselect,_} when B =:= 3 ->
+            {{S,deselect}, St0, true};
+        {deselect, []} ->
+            {{S,all},St0,false};
+        {edge,_} when B =:= 3 ->
+            {{S,{edge_loop,edge_loop}}, St0, false};
+        {edge,_} when B =:= 2 ->
+            {{S,{edge_loop,edge_ring}}, St0, false};
+        {face,_} when B =:= 3 ->
+            {{S,{edge_loop,edge_loop_to_region}}, St0, false};
+        {history,_} when B =:= 1 ->
+            {{edit,undo}, St0, false};
+        {history,_} when B =:= 3 ->
+            {{edit,redo}, St0, false};
+        {select,_} -> {select,St0,false};
+        {tools,_} -> {tools,St0,false};
+        {SelMode, []} ->
+            {{S,SelMode}, St0#st{selmode=SelMode}, true};
+        {SelMode,_} ->
+            {{S,SelMode}, St0, false}
+    end,
+    if Cmd =:= select; Cmd =:= tools ->
+             wings_wm:send_after_redraw(geom, {menu_toolbar,{OrigXY,Cmd,St}}),
+             keep;
+       Kill ->
+             wings_wm:send_after_redraw(geom, {action,Cmd}),
+             wings_menu:kill_menus();
+       true ->
+             wings_wm:send_after_redraw(geom, {menu_toolbar,OrigXY}),
+             do_command(Cmd, none, St#st{temp_sel=none})
+    end;
+menu_toolbar_action({menu_toolbar,{X,_}}, St) ->
+    Windows = wings_wm:windows(),
+    ExtraMenus = lists:filter(fun
+      ({menu,N}) -> N > 2;
+      (_) -> false
+    end, Windows),
+    lists:foreach(fun(M) -> wings_wm:delete(M) end, ExtraMenus),
+    %% Kill menu if an error message popped up
+    case lists:keymember(blanket, 1, Windows) of
+      true -> wings_menu:kill_menus();
+      false ->
+        {_,X0,Y0} = wings_wm:local_mouse_state(),
+        {_,Y} = wings_wm:local2global(X0, Y0),
+        popup_menu(X, Y + ?LINE_HEIGHT div 2, St)
     end.
