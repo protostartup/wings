@@ -1,10 +1,11 @@
 %%
 %%  wings_dl.erl --
 %%
-%%     Manage display lists for objects in Geometry and AutoUV windows
-%%     (providing "garbage collection" of display lists).
+%%     Manage Vertex Buffer Objects (and display lists for objects in
+%%     Geometry and AutoUV windows (providing "garbage collection" of
+%%     display lists).
 %%
-%%  Copyright (c) 2001-2011 Bjorn Gustavsson
+%%  Copyright (c) 2001-2015 Bjorn Gustavsson
 %%
 %%  See the file "license.terms" for information on usage and redistribution
 %%  of this file, and for a DISCLAIMER OF ALL WARRANTIES.
@@ -19,13 +20,14 @@
 	 display_lists/0,
 	 call/1,mirror_matrix/1]).
 
-%%% This module manages display lists for all objects in a Geometry
-%%% or AutoUV window.
+%%% This module manages Vertex Buffer Objects (VBOs, represented by
+%%% #vab{} records) and display lists for all objects in a Geometry or
+%%% AutoUV window.
 %%%
 %%% The major data structure of this module is a list of #dlo{}
 %%% records. There is one #dlo{} record for each visible object
 %%% (hidden objects have no #dlo{} record in the list). The #dlo{}
-%%% records holds several different type of display lists for
+%%% record holds several different type of display lists for
 %%% the corresponding object (e.g. a work display list for faces
 %%% in smooth mode), and also other needed information (e.g. the
 %%% #we{} record for the object).
@@ -36,8 +38,9 @@
 %%% new records (for newly added objects), while the map/2 function
 %%% only allows modification of already existing #dlo{} records.
 %%%
-%%% Both functions automatically deletes any display lists that
-%%% are no longer referenced by any #dlo{} record ("garbage collection").
+%%% Both functions automatically deletes VBOs and display lists that
+%%% are no longer referenced by any #dlo{} record ("garbage
+%%% collection").
 %%%
 %%% The fold/2 function can be used for folding over all #dlo{}
 %%% records to collect information. The callback fun called by fold/2

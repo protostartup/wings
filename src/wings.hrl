@@ -307,10 +307,11 @@
 	 needed=[]
 	}).
 
-%% Vertex array buffers
+%% Vertex Array Objects. The name is #vab{} for historical reasons.
 -record(vab, 
 	{
 	  id = make_ref(),	 %Unique identifier for this instance.
+	  data,			 %Copy of data in VBO (for picking).
 
 	  %% Vertex buffers. Each vertex buffer looks like
 	  %% {Stride,Binary}, where Stride is the stride to be
