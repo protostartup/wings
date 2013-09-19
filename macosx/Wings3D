@@ -1,0 +1,13 @@
+#!/bin/sh
+ROOTDIR=$(dirname "$0")
+ROOTDIR=$(dirname "$ROOTDIR")/Resources
+echo $ROOTDIR
+BINDIR=$ROOTDIR/bin
+EMU=beam
+PROGNAME=erl
+unset ERL_LIBS
+export EMU
+export ROOTDIR
+export BINDIR
+export PROGNAME
+exec "$BINDIR/erlexec" -noinput -smp -run wings_start start_halt ${1+"$@"}

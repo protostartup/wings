@@ -1,10 +1,277 @@
 #!/bin/sh
-function developer_code_sign () {
-   if [ "x$WINGS_CODE_SIGN" != "x" ]; then
-	codesign -s "Developer ID" $1
-   fi
+function Install () {
+   echo "Install $*"
+   /usr/bin/install $*
+   case $? in
+       0)
+	   echo ""
+	   ;;
+       *)
+	   echo "*** APPLICATION CREATION FAILED ***"
+	   exit 1
+	   ;;
+   esac
 }
 
-xcodebuild &&
-developer_code_sign build/Default/Wings3d.app &&
-./make_dmg $1
+if [ x$1 == x ]; then
+   echo "usage: mac_release version"
+   exit 1
+fi
+
+WINGS_VSN="$1"
+TARGET_APP_DIR=$(pwd)/build/Wings3D.app
+ERLANG_PATH=$(erl -noshell -eval 'io:put_chars(code:root_dir())' -run erlang halt)
+
+#
+# Establish the basic directory structure package information files.
+#
+rm -rf $TARGET_APP_DIR
+Install -d build
+Install -d $TARGET_APP_DIR
+Install -d $TARGET_APP_DIR/Contents
+Install -d $TARGET_APP_DIR/Contents/MacOS
+Install -d $TARGET_APP_DIR/Contents/Resources
+
+cat >$TARGET_APP_DIR/Contents/Info.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>wings</string>
+			</array>
+			<key>CFBundleTypeIconFile</key>
+			<string>wings_doc.icns</string>
+			<key>CFBundleTypeName</key>
+			<string>Wings 3D File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>Wings3D</string>
+	<key>CFBundleIconFile</key>
+	<string>wings3d.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.wings3d.wings3d</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$WINGS_VSN</string>
+</dict>
+</plist>
+EOF
+
+echo "APPL\/\/" >$TARGET_APP_DIR/Contents/PkgInfo
+
+#
+# Install the shell script that starts the Wings3D application.
+#
+Install -c -m 755 wings3d $TARGET_APP_DIR/Contents/MacOS/wings3d
+
+#
+# Install application resources.
+#
+dest=$TARGET_APP_DIR/Contents/Resources
+Install -c -m 644 wings3d.icns wings_doc.icns $dest
+
+#
+# Copy the Wings application.
+#
+echo "Copying the Wings application..."
+latest_wings=$(cd ..; pwd)
+dest=$TARGET_APP_DIR/Contents/Resources/lib/wings-$1
+
+Install -d $dest $dest/ebin $dest/patches
+
+cd $latest_wings
+
+Install -c -m 644 README AUTHORS license.terms $dest
+Install -c -m 644 ebin/* $dest/ebin
+rm -f $dest/ebin/user_default.beam
+
+Install -d $dest/fonts \
+ $dest/plugins/accel \
+ $dest/plugins/import_export \
+ $dest/plugins/commands \
+ $dest/plugins/primitives $dest/plugins/mac_file \
+ $dest/plugins/autouv \
+ $dest/plugins/default
+
+Install -d $dest/textures
+Install -d $dest/shaders
+Install -c -m 644 textures/* $dest/textures
+Install -c -m 644 shaders/* $dest/shaders
+
+Install -c -m 644 fonts/* $dest/fonts
+Install -c -m 644 plugins/accel/* $dest/plugins/accel
+Install -c -m 644 plugins/default/* $dest/plugins/default
+Install -c -m 644 plugins/import_export/* $dest/plugins/import_export
+Install -c -m 644 plugins/commands/* $dest/plugins/commands
+Install -c -m 644 plugins/primitives/* $dest/plugins/primitives
+Install -c -m 644 plugins/mac_file/* $dest/plugins/mac_file
+Install -c -m 644 plugins/autouv/* $dest/plugins/autouv
+find $dest/plugins -name '*.so' | xargs macosx/strip_mac_driver
+find $dest/plugins -name README | xargs rm
+rm $dest/plugins/default/wpc_test_ask.beam
+
+cd macosx
+
+#
+# Copy the relevant parts of Erlang/OTP
+# into the application.
+#
+echo "Copying the relevant subset of Erlang/OTP..."
+src=$ERLANG_PATH
+dest=$TARGET_APP_DIR/Contents/Resources
+erts_src=$src/erts-*
+erts=$(basename $erts_src)
+stdlib=$(basename $src/lib/stdlib-*)
+kernel=$(basename $src/lib/kernel-*)
+xmerl=$(basename "$src"/lib/xmerl-*)
+
+Install -d "$dest/bin" \
+    "$dest/lib/$stdlib/ebin" \
+    "$dest/lib/$kernel/ebin" \
+    "$dest/lib/$xmerl/ebin"
+
+Install -c -m 644 $src/lib/kernel-*/ebin/* $dest/lib/$kernel/ebin
+Install -c -m 644 $src/lib/stdlib-*/ebin/* $dest/lib/$stdlib/ebin
+Install -c -m 644 "$src"/lib/xmerl-*/ebin/* "$dest/lib/$xmerl/ebin"
+
+../tools/wings_reduce_otp $dest
+
+Install -c -s $erts_src/bin/erlexec $dest/bin
+Install -c -s $erts_src/bin/child_setup $dest/bin
+Install -c $erts_src/bin/beam.smp $dest/bin
+Install -c $erts_src/bin/inet_gethost $dest/bin/inet_gethost
+Install -c -m 644 $src/bin/start.boot $dest/bin
+
+strip -x $dest/bin/beam.smp
+strip $dest/bin/erlexec
+strip $dest/bin/child_setup
+strip $dest/bin/inet_gethost
+
+#
+# Copy the relevant parts of ESDL into the application.
+#
+ESDL_PATH=$(erl -noshell -eval "io:put_chars(code:lib_dir(esdl))" -run erlang halt)
+src=$ERLANG_PATH
+DEST_ROOT=$TARGET_APP_DIR/Contents/Resources/lib/
+ESDL_NAME=$(basename $ESDL_PATH)
+if [ X$ESDL_NAME == Xesdl ]; then
+    echo $ESDL_NAME without version
+    source $ESDL_PATH/vsn.mk
+    ESDL_NAME=$ESDL_VSN
+    echo Install esdl to $ESDL_NAME
+fi
+dest="$DEST_ROOT/$ESDL_NAME"
+
+Install -d $dest/ebin $dest/priv
+Install -c -m 644  $ESDL_PATH/ebin/* $dest/ebin
+Install -c -m 644  $ESDL_PATH/priv/sdl_driver.so $dest/priv
+./strip_mac_driver $dest/priv/sdl_driver.so
+
+#
+# Copy the relevant parts of wx into the application.
+#
+echo "Copying the used parts of wx..."
+WX_PATH=$(erl -noshell -eval "io:put_chars(code:lib_dir(wx))" -s erlang halt)
+DEST_ROOT=$TARGET_APP_DIR/Contents/Resources/
+WX_NAME=$(basename $WX_PATH)
+dest="$DEST_ROOT/lib/$WX_NAME"
+
+Install -d "$dest/ebin" "$dest/priv"
+Install -c -m 644 "$WX_PATH"/ebin/gl.beam "$dest/ebin"
+Install -c -m 644 "$WX_PATH"/ebin/glu.beam "$dest/ebin"
+Install -c -m 644 "$WX_PATH"/priv/erl_gl.so "$dest/priv"
+./strip_mac_driver $dest/priv/erl_gl.so
+
+#
+# Copy the relevant parts of cl into the application.
+#
+echo "Copying cl..."
+CL_PATH=$(erl -noshell -eval "io:put_chars(code:lib_dir(cl))" -s erlang halt)
+DEST_ROOT=$TARGET_APP_DIR/Contents/Resources
+CL_NAME=$(basename $CL_PATH)
+if [ X$CL_NAME == Xcl ]; then
+    echo $CL_NAME without version
+    CL_VSN=$(sed -n "/CL_VSN/s/^CL_VSN[^0-9]*//p" $CL_PATH/vsn.mk)
+    CL_NAME="cl-$CL_VSN"
+fi
+echo Install cl to $CL_NAME
+dest="$DEST_ROOT/lib/$CL_NAME"
+
+Install -d "$dest/ebin" "$dest/priv"
+Install -c -m 644  "$CL_PATH"/ebin/cl.beam "$dest/ebin"
+Install -c -m 644  "$CL_PATH"/ebin/clu.beam "$dest/ebin"
+Install -c -m 644  "$CL_PATH"/priv/cl_nif.so "$dest/priv"
+./strip_mac_driver $dest/priv/cl_nif.so
+
+#
+# Strip debug information from all beam files.
+#
+echo "Stripping debug information from beam files..."
+dest=$TARGET_APP_DIR/Contents/Resources
+temp=$(pwd)
+erlc -o $temp ../tools/strip.erl
+(cd $dest; erl -noshell -pa $temp -run strip strip)
+
+
+#
+# Copy the SDL framework.
+#
+echo "Copying the SDL framework..."
+dest=$TARGET_APP_DIR/Contents/Resources/Frameworks
+
+Install -d $dest
+
+for i in "/Library/Frameworks" "$HOME/Library/Frameworks"; do
+    if [ -d $i/SDL.framework ]; then
+        sdl_framework=$i/SDL.framework
+    fi
+done
+if [ -d $dest/SDL.framework ]; then
+    rm -rf $dest/SDL.framework
+fi
+cp -r $sdl_framework $dest/SDL.framework
+if [ -d $dest/SDL.framework/Headers ]; then
+    rm -rf $dest/SDL.framework/Headers
+fi
+for i in $dest/SDL.framework/Versions/*; do
+    if [ -d $i/Headers ]; then
+        rm -rf $i/Headers
+    fi
+done
+
+strip -x $dest/SDL.framework/SDL
+
+#
+# Optionally code sign with Developer ID.
+#
+if [ "x$WINGS_CODE_SIGN" != "x" ]; then
+  echo "Code signing with Developer ID..."
+  codesign -s "Developer ID" $TARGET_APP_DIR
+fi
+
+#
+# Packing into a DMG.
+#
+dmg="../wings-$WINGS_VSN-macosx.dmg"
+echo "Creating $dmg..."
+temp_dmg="wings-macosx.$$.dmg"
+mnt=$(pwd)/mount
+
+rm -f $temp_dmg $dmg
+hdiutil create -quiet -megabytes 100 -volname "Wings3D" -fs HFS+ -layout NONE $temp_dmg
+hdiutil attach -private -mountpoint $mnt $temp_dmg
+ditto $TARGET_APP_DIR "$mnt/Wings3D $WINGS_VSN.app"
+hdiutil detach $mnt
+hdiutil convert "$temp_dmg" -format UDZO -o $dmg -imagekey zlib-level=9
+rm $temp_dmg
