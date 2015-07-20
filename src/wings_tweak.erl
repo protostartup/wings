@@ -2894,39 +2894,47 @@ get_vs_influence(V, VsDyn) ->
 %%%
 
 %% It generate the OpenGl list of colored vertices
-update_dlist({edge_info,EdgeInfo},#dlo{plugins=Pdl,src_we=#we{vp=Vtab}}=D, _) ->
+update_dlist({edge_info,EdgeInfo}, #dlo{plugins=Pdl,src_we=#we{vp=Vtab}}=D, _) ->
     Key = ?MODULE,
     case EdgeInfo of
-    [] ->
-        D#dlo{plugins=[{Key,none}|Pdl]};
-    _ ->
-        ColFrom=col_to_vec(wings_pref:get_value(edge_color)),
-        ColTo=col_to_vec(wings_pref:get_value(tweak_magnet_color)),
-        ColRange=e3d_vec:sub(ColTo,ColFrom),
-        EdgeList = gl:genLists(1),
-        gl:newList(EdgeList,?GL_COMPILE),
-        gl:'begin'(?GL_LINES),
-        pump_edges(EdgeInfo,Vtab,ColFrom,ColRange),
-        gl:'end'(),
-        gl:endList(),
-        D#dlo{plugins=[{Key,{edge,EdgeList}}|Pdl]}
+	[] ->
+	    D#dlo{plugins=[{Key,none}|Pdl]};
+	_ ->
+	    ColFrom = col_to_vec(wings_pref:get_value(edge_color)),
+	    ColTo = col_to_vec(wings_pref:get_value(tweak_magnet_color)),
+	    ColRange = e3d_vec:sub(ColTo, ColFrom),
+	    Draw = pump_fun(EdgeInfo, Vtab, ColFrom, ColRange),
+	    D#dlo{plugins=[{Key,{edge,Draw}}|Pdl]}
     end.
 
-%% pumping Lines
-pump_edges([],_,_,_) -> ok;
-pump_edges([{Id1,Inf1,Id2,Inf2}|SegInf],Vtab,Col,Range) ->
-    {R1,G1,B1}=color_gradient(Col,Range,Inf1),
-    {R2,G2,B2}=color_gradient(Col,Range,Inf2),
+pump_fun(EdgeInfo, Vtab, ColFrom, ColRange) ->
+    Pump = prepare_pumping(EdgeInfo, Vtab, ColFrom, ColRange),
+    fun() ->
+	    gl:'begin'(?GL_LINES),
+	    pump_edges(Pump),
+	    gl:'end'()
+    end.
+
+prepare_pumping([{Id1,Inf1,Id2,Inf2}|T], Vtab, Col, Range) ->
     case {array:get(Id1, Vtab),array:get(Id2, Vtab)} of
-        {undefined,_} -> ok;
-        {_,undefined} -> ok;
+        {undefined,_} ->
+	    prepare_pumping(T, Vtab, Col, Range);
+        {_,undefined} ->
+	    prepare_pumping(T, Vtab, Col, Range);
         {V1,V2} ->
-            gl:color3f(R1,G1,B1),
-            gl:vertex3fv(V1),
-            gl:color3f(R2,G2,B2),
-            gl:vertex3fv(V2)
-    end,
-    pump_edges(SegInf,Vtab,Col,Range).
+	    Col1 = color_gradient(Col, Range, Inf1),
+	    Col2 = color_gradient(Col, Range, Inf2),
+	    [{V1,Col1,V2,Col2}|prepare_pumping(T, Vtab, Col, Range)]
+    end;
+prepare_pumping([], _, _, _) -> [].
+
+pump_edges([{V1,Col1,V2,Col2}|T]) ->
+    gl:color3fv(Col1),
+    gl:vertex3fv(V1),
+    gl:color3fv(Col2),
+    gl:vertex3fv(V2),
+    pump_edges(T);
+pump_edges([]) -> ok.
 
 %% It'll will provide de vertices data for 'update_dlist' function
 get_data(update_dlist, Data, Acc) ->  % for draw lists
@@ -2951,5 +2959,7 @@ col_to_vec({_,_,_}=Col) -> Col;
 col_to_vec({R,G,B,_}) when is_integer(R) -> col_to_vec({R,G,B});
 col_to_vec({R,G,B,_}) -> col_to_vec({R,G,B}).
 
+color_gradient(Cb, _, 0.0) ->
+    Cb;
 color_gradient(Cb, Cr, Perc) ->
-    e3d_vec:add(Cb,e3d_vec:mul(Cr,Perc)).
+    e3d_vec:add_prod(Cb, Cr, Perc).
