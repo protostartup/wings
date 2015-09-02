@@ -107,6 +107,7 @@ crash_log(WinName, Reason, StackTrace) ->
     [io:format(Fd, "Window: ~p\n", [WinName])  || Fd <- [F, group_leader()]],
     [io:format(Fd, "Reason: ~p\n\n", [Reason]) || Fd <- [F, group_leader()]],
     report_stacktrace(F, StackTrace),
+    report_environment(F),
     analyse(F, StackTrace),
     file:close(F),
     LogName.
@@ -129,6 +130,12 @@ report_stacktrace(_, []) ->
     %% (There will be no stacktrace if we were called from the
     %% process that runs wings:halt_loop/1.)
     ok.
+
+report_environment(F) ->
+    Env = lists:sort(os:getenv()),
+    S = [[E,$\n] || E <- Env],
+    Head = "Environment variables:\n",
+    io:put_chars(F, [Head,S,$\n]).
 
 caption(#st{file=undefined}=St) ->
     Caption = wings(),
