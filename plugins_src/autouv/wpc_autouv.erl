@@ -1915,49 +1915,80 @@ update_and_scale_chart(Vs0,We0) ->
 %%% Draw routines.
 %%%
 
-draw_background(#st{bb=#uvstate{matname=MatName,st=St,bg_img=Image}}) ->
+draw_background(#st{bb=UvState}) ->
     gl:pushAttrib(?GL_ALL_ATTRIB_BITS),
     wings_view:load_matrices(false),
 
     %% Draw border around the UV space.
-    gl:enable(?GL_DEPTH_TEST),
-    gl:polygonMode(?GL_FRONT_AND_BACK, ?GL_LINE),
-    gl:lineWidth(1),
-    gl:color3f(0, 0, 0.7),
-    gl:translatef(0, 0, -0.5),
-    gl:'begin'(?GL_LINES),
-    G = fun(V) ->
-		gl:vertex2f(V,20),  gl:vertex2f(V,-20),
-		gl:vertex2f(20,V),  gl:vertex2f(-20,V)
-	end,
-    lists:foreach(G, lists:seq(-20,20)),
-    gl:'end'(),
-    gl:lineWidth(3),
-    gl:color3f(0, 0, 1.0),
-    gl:recti(0, 0, 1, 1),
+    draw_uv_borders(),
 
     %% Draw the background texture.
+    Draw = fun(_) -> update_background(UvState) end,
+    wings_dl:draw(autouv_background, [], Draw),
+    gl:popAttrib().
+
+update_background(UvState) ->
+    Draw = fun() -> do_draw_background(UvState) end,
+    wings_vbo:new(Draw, background_data(), [vertex,uv]).
+
+do_draw_background(#uvstate{matname=MatName,st=St,bg_img=Image}) ->
     gl:polygonMode(?GL_FRONT_AND_BACK, ?GL_FILL),
     gl:color3f(1, 1, 1),			%Clear
     case get({?MODULE,show_background}) of
 	false -> ok;
 	_ -> 
-	    Tx = case get_texture(MatName,St) of
+	    Tx = case get_texture(MatName, St) of
 		     false -> wings_image:txid(Image);
 		     DiffId -> wings_image:txid(DiffId)
 		 end,
 	    gl:enable(?GL_TEXTURE_2D),
 	    gl:bindTexture(?GL_TEXTURE_2D, Tx)
     end,
-    gl:'begin'(?GL_QUADS),
-    gl:texCoord2f(0, 0),    gl:vertex3f(0, 0, -0.99999),
-    gl:texCoord2f(1, 0),    gl:vertex3f(1, 0, -0.99999),
-    gl:texCoord2f(1, 1),    gl:vertex3f(1, 1, -0.99999),
-    gl:texCoord2f(0, 1),    gl:vertex3f(0, 1, -0.99999),
-    gl:'end'(), 
-    gl:disable(?GL_TEXTURE_2D),
+    gl:drawArrays(?GL_TRIANGLES, 0, 6),
+    gl:disable(?GL_TEXTURE_2D).
 
-    gl:popAttrib().
+background_data() ->
+    Z = 0.0,
+    O = 1.0,
+    D = -0.99999,
+    %% Two triangles forming a square.
+    <<Z:?F32,Z:?F32,D:?F32, Z:?F32,Z:?F32,
+      O:?F32,Z:?F32,D:?F32, O:?F32,Z:?F32,
+      O:?F32,O:?F32,D:?F32, O:?F32,O:?F32,
+      O:?F32,O:?F32,D:?F32, O:?F32,O:?F32,
+      Z:?F32,O:?F32,D:?F32, Z:?F32,O:?F32,
+      Z:?F32,Z:?F32,D:?F32, Z:?F32,Z:?F32>>.
+
+draw_uv_borders() ->
+    U = fun([]) ->
+		Data = draw_uv_borders_data(-20, 20),
+		N = length(Data),
+		D = fun() -> do_draw_uv_borders(N) end,
+		wings_vbo:new(D, Data)
+	end,
+    wings_dl:draw(autouv_borders, [], U).
+
+draw_uv_borders_data(V0, Upper0) when V0 =< Upper0 ->
+    V = float(V0),
+    Upper = float(Upper0),
+    [{V,Upper,0.0},
+     {V,-Upper,0.0},
+     {Upper,V,0.0},
+     {-Upper,V,0.0}|draw_uv_borders_data(V+1, Upper)];
+draw_uv_borders_data(_, _) -> [].
+
+do_draw_uv_borders(N) ->
+    gl:enable(?GL_DEPTH_TEST),
+    gl:polygonMode(?GL_FRONT_AND_BACK, ?GL_LINE),
+    gl:lineWidth(1),
+    gl:color3f(0, 0, 0.7),
+    gl:translatef(0, 0, -0.5),
+
+    gl:drawArrays(?GL_LINES, 0, N),
+
+    gl:lineWidth(3),
+    gl:color3f(0, 0, 1.0),
+    gl:recti(0, 0, 1, 1).
 
 redraw(St) ->
     wings_wm:set_prop(show_info_text, false),
