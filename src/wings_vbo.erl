@@ -17,6 +17,8 @@
 -define(NEED_OPENGL, 1).
 -include("wings.hrl").
 
+-import(lists, [foldl/3]).
+
 new(Draw, Data) ->
     new(Draw, Data, [vertex]).
 
@@ -28,7 +30,7 @@ new(Draw, Data, Layout) when is_binary(Data) ->
     gl:bindBuffer(?GL_ARRAY_BUFFER, Vbo),
     gl:bufferData(?GL_ARRAY_BUFFER, byte_size(Data), Data, ?GL_STATIC_DRAW),
     gl:bindBuffer(?GL_ARRAY_BUFFER, 0),
-    D = parse_layout(Layout, Vbo, Draw),
+    D = draw_fun(Layout, Vbo, Draw),
     {call,D,{vbo,Vbo}}.
 
 draw(Draw, Data) ->
@@ -39,55 +41,55 @@ draw(Draw0, Data0, Layout) ->
     [Vbo] = Buffers = gl:genBuffers(1),
     gl:bindBuffer(?GL_ARRAY_BUFFER, Vbo),
     gl:bufferData(?GL_ARRAY_BUFFER, byte_size(Data), Data, ?GL_STATIC_DRAW),
-    Draw = parse_layout(Layout, Vbo, Draw0),
+    Draw = draw_fun(Layout, Vbo, Draw0),
     Draw(),
     gl:deleteBuffers(Buffers),
     ok.
 
-parse_layout([vertex], Vbo, Draw) ->
+draw_fun(Layout, Vbo, Draw0) ->
+    Stride = stride(Layout),
+    Draw = draw_fun_1(Layout, Stride, Draw0, 0),
     fun() ->
 	    gl:bindBuffer(?GL_ARRAY_BUFFER, Vbo),
-	    gl:vertexPointer(3, ?GL_FLOAT, 0, 0),
-	    gl:enableClientState(?GL_VERTEX_ARRAY),
-	    gl:bindBuffer(?GL_ARRAY_BUFFER, 0),
 	    Draw(),
-	    gl:disableClientState(?GL_VERTEX_ARRAY)
-    end;
-parse_layout(Layout, Vbo, Draw) ->
-    Stride = case length(Layout) of
-		 1 -> 0;
-		 N -> N*3*4
-	     end,
-    Bufs = parse_layout_1(Layout, Stride, 0),
-    fun() ->
-	    gl:bindBuffer(?GL_ARRAY_BUFFER, Vbo),
-	    enable_buffers(Bufs),
-	    Draw(),
-	    gl:bindBuffer(?GL_ARRAY_BUFFER, 0),
-	    disable_buffers(Bufs)
+	    gl:bindBuffer(?GL_ARRAY_BUFFER, 0)
     end.
 
-parse_layout_1([Type0|T], Stride, Addr) ->
-    Type = case Type0 of
-	       vertex -> ?GL_VERTEX_ARRAY;
-	       color -> ?GL_COLOR_ARRAY
-	   end,
-    Buf = {Type,Stride,Addr},
-    [Buf|parse_layout_1(T, Stride, Addr+3*4)];
-parse_layout_1([], _, _) -> [].
+draw_fun_1([Type|T], Stride, Fun0, Addr0) ->
+    Fun = draw_fun_2(Type, Stride, Fun0, Addr0),
+    Addr = Addr0 + width(Type),
+    draw_fun_1(T, Stride, Fun, Addr);
+draw_fun_1([], _, Fun, _) -> Fun.
 
-enable_buffers([{Type,Stride,Addr}|T]) ->
-    case Type of
-	?GL_VERTEX_ARRAY ->
-	    gl:vertexPointer(3, ?GL_FLOAT, Stride, Addr);
-	?GL_COLOR_ARRAY ->
-	    gl:colorPointer(3, ?GL_FLOAT, Stride, Addr)
-    end,
-    gl:enableClientState(Type),
-    enable_buffers(T);
-enable_buffers([]) -> ok.
+draw_fun_2(vertex, Stride, Fun, Addr) ->
+    fun() ->
+	    gl:vertexPointer(3, ?GL_FLOAT, Stride, Addr),
+	    gl:enableClientState(?GL_VERTEX_ARRAY),
+	    Fun(),
+	    gl:disableClientState(?GL_VERTEX_ARRAY)
+    end;
+draw_fun_2(color, Stride, Fun, Addr) ->
+    fun() ->
+	    gl:colorPointer(3, ?GL_FLOAT, Stride, Addr),
+	    gl:enableClientState(?GL_COLOR_ARRAY),
+	    Fun(),
+	    gl:disableClientState(?GL_COLOR_ARRAY)
+    end;
+draw_fun_2(uv, Stride, Fun, Addr) ->
+    fun() ->
+	    gl:texCoordPointer(2, ?GL_FLOAT, Stride, Addr),
+	    gl:enableClientState(?GL_TEXTURE_COORD_ARRAY),
+	    Fun(),
+	    gl:disableClientState(?GL_TEXTURE_COORD_ARRAY)
+    end.
 
-disable_buffers([{Type,_,_}|T]) ->
-    gl:disableClientState(Type),
-    disable_buffers(T);
-disable_buffers([]) -> ok.
+stride([_]) ->
+    0;
+stride(L) ->
+    foldl(fun(Item, Sum) ->
+		  Sum + width(Item)
+	  end, 0, L).
+
+width(vertex) -> 3*4;
+width(color) -> 3*4;
+width(uv) -> 2*4.
