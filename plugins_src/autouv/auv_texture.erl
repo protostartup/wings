@@ -392,13 +392,35 @@ error_msg(Line) ->
     end.
 
 draw_texture_square() ->
-    gl:'begin'(?GL_QUADS),
-    gl:texCoord2f(0.0,0.0), gl:vertex2f(0.0,0.0),
-    gl:texCoord2f(1.0,0.0), gl:vertex2f(1.0,0.0),
-    gl:texCoord2f(1.0,1.0), gl:vertex2f(1.0,1.0),
-    gl:texCoord2f(0.0,1.0), gl:vertex2f(0.0,1.0),
-    gl:'end'().
+    Update = fun update_texture_square/1,
+    wings_dl:draw(auv_texture_square, [], Update).
 
+update_texture_square([]) ->
+    Z = <<0.0:?F32>>,
+    O = <<1.0:?F32>>,
+    Data0 = [O,O,O,O,
+	     Z,O,Z,O,
+	     Z,Z,Z,Z,
+	     O,Z,O,Z],
+    Data = iolist_to_binary(Data0),
+    [Vbo] = gl:genBuffers(1),
+    gl:bindBuffer(?GL_ARRAY_BUFFER, Vbo),
+    gl:bufferData(?GL_ARRAY_BUFFER, byte_size(Data), Data, ?GL_STATIC_DRAW),
+    gl:bindBuffer(?GL_ARRAY_BUFFER, 0),
+    D = fun() -> do_draw_texture_square(Vbo) end,
+    {call,D,{vbo,Vbo}}.
+
+do_draw_texture_square(Vbo) ->
+    gl:bindBuffer(?GL_ARRAY_BUFFER, Vbo),
+    gl:vertexPointer(2, ?GL_FLOAT, 16, 0),
+    gl:texCoordPointer(2, ?GL_FLOAT, 16, 8),
+    gl:enableClientState(?GL_VERTEX_ARRAY),
+    gl:enableClientState(?GL_TEXTURE_COORD_ARRAY),
+    gl:drawArrays(?GL_TRIANGLE_STRIP, 0, 4),
+    gl:disableClientState(?GL_VERTEX_ARRAY),
+    gl:disableClientState(?GL_TEXTURE_COORD_ARRAY),
+    gl:bindBuffer(?GL_ARRAY_BUFFER, 0),
+    ok.
 
 fill_bg_tex(#sh_conf{fbo_w=Prev}) ->
     gl:drawBuffer(?GL_COLOR_ATTACHMENT1_EXT),
