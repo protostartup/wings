@@ -315,14 +315,9 @@ render_image(#ts{uv=UVpos,pos=Pos,n=Ns,bi=BiNs,vc=Vc}=Geom,
     gl:pushAttrib(?GL_ALL_ATTRIB_BITS),
     
     Current = wings_wm:viewport(),
-    UsingFbo = setup_fbo(TexW,TexH),
-    {W0,H0} = if not UsingFbo -> wings_wm:top_size();
-		 true -> {TexW,TexH}
-	      end,
-    {W,Wd} = calc_texsize(W0, TexW),
-    {H,Hd} = calc_texsize(H0, TexH),
-%%    io:format("Get texture sz ~p ~p ~n", [{W,Wd},{H,Hd}]),
-    set_viewport({0,0,W,H}),
+    Fbo = setup_fbo(TexW, TexH),
+    set_viewport({0,0,TexW,TexH}),
+
     %% Load Pointers
     gl:vertexPointer(2, ?GL_FLOAT, 0, UVpos),
     case lists:member(normal, Reqs) of
@@ -350,37 +345,34 @@ render_image(#ts{uv=UVpos,pos=Pos,n=Ns,bi=BiNs,vc=Vc}=Geom,
     try 
         Dl = fun() ->
 		     foreach(fun(Pass) -> 
-				     if not UsingFbo -> 
-					     Pass(Geom,undefined);
-					true ->
-					     fill_bg_tex(UsingFbo),
-					     Pass(Geom,UsingFbo)
-				     end
+				     fill_bg_tex(Fbo),
+				     Pass(Geom, Fbo)
 			     end,
 			     Passes) 
 	     end,
-	ImageBins = get_texture(0, Wd, 0, Hd, {W,H}, Dl, UsingFbo,[]),
-	ImageBin = merge_texture(ImageBins, Wd, Hd, W*3, H, []),
-	if not UsingFbo -> 
-		#e3d_image{image=ImageBin,width=TexW,height=TexH};
-	   true -> 
-		#e3d_image{image=ImageBin,width=TexW,height=TexH,
-			   type=r8g8b8a8,bytes_pp=4}
-	end
-    catch _:What ->
+	ImageBin = get_texture(TexW, TexH, Dl),
+	%% FIXME: The geometry is still using VABs. They should be
+	%% replaced with VBOs. For now, we must make sure that the
+	%% #ts{} record is not gabarge collected too early.
+	retain(Geom),
+	#e3d_image{image=ImageBin,width=TexW,height=TexH,
+		   type=r8g8b8a8,bytes_pp=4}
+    catch
+	_:What ->
 	    Where = erlang:get_stacktrace(),
 	    exit({What,Where})
     after 
-	case UsingFbo of 
-	  false -> ignore;
-	  #sh_conf{fbo_d=DeleteMe} -> DeleteMe()
-      end,
-      set_viewport(Current),
-      gl:readBuffer(?GL_BACK),
-      gl:popAttrib(),
-      gl:clear(?GL_COLOR_BUFFER_BIT bor ?GL_DEPTH_BUFFER_BIT),
-      ?ERROR    
+	#sh_conf{fbo_d=DeleteMe} = Fbo,
+	DeleteMe(),
+	set_viewport(Current),
+	gl:readBuffer(?GL_BACK),
+	gl:popAttrib(),
+	gl:clear(?GL_COLOR_BUFFER_BIT bor ?GL_DEPTH_BUFFER_BIT),
+	?ERROR
     end.
+
+retain(_) ->
+    ok.
 
 %%%%%%%%% FBO stuff
 
@@ -418,69 +410,26 @@ fill_bg_tex(#sh_conf{fbo_w=Prev}) ->
     gl:drawBuffer(?GL_COLOR_ATTACHMENT0_EXT),
     ok.
 	    
-get_texture(Wc, Wd, Hc, Hd, {W,H}=Info, DL, UsingFbo, ImageAcc)
-  when Wc < Wd, Hc < Hd ->
+get_texture(W, H, DL) ->
     gl:pixelStorei(?GL_UNPACK_ALIGNMENT, 1),
     gl:clearColor(1.0, 1.0, 1.0, 1.0),
     gl:shadeModel(?GL_SMOOTH),
     gl:disable(?GL_CULL_FACE),
     gl:disable(?GL_LIGHTING),
-    texture_view(Wc, Wd, Hc, Hd),
-    DL(),
-    gl:flush(),
-    {Sz,Type} = 
-	case UsingFbo of
-	    false -> 
-		gl:readBuffer(?GL_BACK),
-		{3,?GL_RGB};
-	    _ -> 
-		gl:readBuffer(?GL_COLOR_ATTACHMENT0_EXT),
-		{4,?GL_RGBA}
-	end,
-    Mem = wings_io:get_buffer(W*H*Sz, ?GL_UNSIGNED_BYTE),
-    gl:readPixels(0,0,W,H,Type,?GL_UNSIGNED_BYTE,Mem),
-    ImageBin = wings_io:get_bin(Mem),
-    get_texture(Wc+1, Wd, Hc, Hd, Info, DL, UsingFbo, [ImageBin|ImageAcc]);
-get_texture(_Wc,Wd,Hc,Hd, Info, Dl, UsingFbo, ImageAcc) when Hc < Hd ->
-    get_texture(0, Wd, Hc+1, Hd, Info, Dl, UsingFbo, ImageAcc);
-get_texture(_,_,_,_,_,_,_,ImageAcc) -> reverse(ImageAcc).
+    gl:polygonMode(?GL_FRONT_AND_BACK, ?GL_FILL),
 
-texture_view(WC, WD, HC, HD) ->
     gl:matrixMode(?GL_PROJECTION),
     gl:loadIdentity(),
-    glu:ortho2D(WC/WD, (1+WC)/WD, HC/HD, (1+HC)/HD),
+    glu:ortho2D(0, 1, 0, 1),
     gl:matrixMode(?GL_MODELVIEW),
     gl:loadIdentity(),
-    gl:polygonMode(?GL_FRONT_AND_BACK, ?GL_FILL).
-    
-merge_texture_cols(List, Wd, Wd, _W, _RowC, Acc) ->
-    {list_to_binary(reverse(Acc)), List};
-merge_texture_cols([H|R], Wc, Wd, W, RowC, Acc) ->
-    SkipBytes = RowC*W,
-    <<_:SkipBytes/binary, Row:W/binary,_/binary>> = H,
-    merge_texture_cols(R, Wc + 1, Wd, W, RowC, [Row|Acc]).
 
-merge_texture_rows(_ImageBins, H, H, _W, _Wd,Acc, Last) ->
-    {list_to_binary(reverse(Acc)), Last};
-merge_texture_rows(ImageBins, RowC, H, W, Wd, Acc, _) ->
-    {Row, Rest} = merge_texture_cols(ImageBins, 0, Wd, W, RowC, []),
-    merge_texture_rows(ImageBins, RowC + 1, H,W,Wd, [Row|Acc], Rest).
-
-merge_texture([Bin],1,1,_,_,[]) ->   Bin;  %% No merge needed.
-merge_texture(Bins, 1,_,_,_,[]) ->   list_to_binary(Bins);  %% No merge needed.
-merge_texture([],_,_,_,_,Acc) -> 
-    list_to_binary(reverse(Acc));
-merge_texture(ImageBins,Wd,Hd,W,H,Acc) ->    
-    {Col, Bins} = merge_texture_rows(ImageBins, 0, H, W, Wd, [], ImageBins),
-    merge_texture(Bins,Wd,Hd,W,H,[Col|Acc]).
-
-calc_texsize(Vp, Tex) ->
-    calc_texsize(Vp, Tex, Tex).
-
-calc_texsize(Vp, Tex, Orig) when Tex =< Vp ->
-    {Tex,Orig div Tex};
-calc_texsize(Vp, Tex, Orig) ->
-    calc_texsize(Vp, Tex div 2, Orig).
+    DL(),
+    gl:flush(),
+    Mem = wings_io:get_buffer(4*W*H, ?GL_UNSIGNED_BYTE),
+    gl:readBuffer(?GL_COLOR_ATTACHMENT0_EXT),
+    gl:readPixels(0, 0, W, H, ?GL_RGBA, ?GL_UNSIGNED_BYTE, Mem),
+    wings_io:get_bin(Mem).
 
 get_pref(Key, Def) ->
     wpa:pref_get(autouv, Key, Def).
