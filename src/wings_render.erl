@@ -207,13 +207,10 @@ render_smooth_objects_0([D|Dls], RenderTrans, SceneLights) ->
     render_smooth_objects_0(Dls, RenderTrans, SceneLights);
 render_smooth_objects_0([], _, _) -> ok.
 
-render_object(#dlo{drag={matrix,_,_,Matrix}}=D, Work, RT, SceneLights) ->
-    gl:pushMatrix(),
-    gl:multMatrixf(Matrix),
-    render_object_1(D, Work, RT, SceneLights),
-    gl:popMatrix();
 render_object(D, Work, RT, SceneLights) ->
-    render_object_1(D, Work, RT, SceneLights).
+    draw_with_drag_matrix(D, fun() ->
+                                     render_object_1(D, Work, RT, SceneLights)
+                             end).
 
 render_object_1(#dlo{mirror=none}=D, Work, RenderTrans, SceneLights) ->
     render_object_2(D, Work, RenderTrans, SceneLights);
@@ -363,13 +360,10 @@ render_wire(Dls, _, true) ->
     _ = [render_wire_object(D, Style) || D <- PWs],
     ok.
 
-render_wire_object(#dlo{drag={matrix,_,_,Matrix}}=D, PStyle) ->
-    gl:pushMatrix(),
-    gl:multMatrixf(Matrix),
-    render_wire_object_1(D, PStyle),
-    gl:popMatrix();
 render_wire_object(D, PStyle) ->
-    render_wire_object_1(D, PStyle).
+    draw_with_drag_matrix(D, fun() ->
+                                     render_wire_object_1(D, PStyle)
+                             end).
 
 render_wire_object_1(#dlo{mirror=none, edges=Edges, proxy=false}, _) ->
     wings_dl:call(Edges);
@@ -436,13 +430,10 @@ render_sel_highlight(Dls, SelMode, true, _PM) ->
     _ = [wings_plugin:draw(smooth,D,none) || D <- Dls],
     ok.
 
-render_sel(#dlo{drag={matrix,_,_,Matrix}}=D, Mode, Sel) ->
-    gl:pushMatrix(),
-    gl:multMatrixf(Matrix),
-    render_sel_1(D, Mode, Sel),
-    gl:popMatrix();
 render_sel(D, Mode, Sel) ->
-    render_sel_1(D, Mode, Sel).
+    draw_with_drag_matrix(D, fun() ->
+                                     render_sel_1(D, Mode, Sel)
+                             end).
 
 render_sel_1(#dlo{mirror=none}=D, Mode, Sel) ->
     render_sel_2(D, Mode, Sel);
@@ -1030,3 +1021,14 @@ draw_clip_disk(Direction, Expand) ->
     glu:disk(Obj, 0.0, wings_pref:get_value(clip_plane_size), 35, 1),
     gl:popMatrix(),
     glu:deleteQuadric(Obj).
+
+draw_with_drag_matrix(D, Draw) ->
+    case wings_drag:get_drag_matrix(D) of
+        identity ->
+            Draw();
+        Matrix ->
+            gl:pushMatrix(),
+            gl:multMatrixf(Matrix),
+            Draw(),
+            gl:popMatrix()
+    end.

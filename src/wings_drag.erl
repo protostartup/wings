@@ -14,7 +14,7 @@
 -module(wings_drag).
 -export([do_drag/2,fold/3,fold/4,
          matrix/3,matrix/4,general/4,drag_only/4,
-         compose/1,translate_fun/2]).
+         compose/1,translate_fun/2,get_drag_matrix/1]).
 
 -export_type([drag/0,vec_transform_fun/0,vertices/0,vertex_transform/0]).
 
@@ -183,6 +183,13 @@ translate_fun([_|_]=VecVs0, #we{vp=Vtab}) ->
     Affected = foldl(fun({_,Vs}, A) -> Vs++A end, [], VecVs1),
     VecVs = insert_vtx_data(VecVs1, Vtab, []),
     {Affected,translate_fun(VecVs)}.
+
+-spec get_drag_matrix(#dlo{}) -> e3d_mat:matrix().
+
+get_drag_matrix(#dlo{drag={matrix,_,_,Matrix}}) ->
+    Matrix;
+get_drag_matrix(#dlo{}) ->
+    identity.
 
 %%%
 %%% Local functions.

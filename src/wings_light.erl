@@ -812,7 +812,7 @@ scene_lights_fun(#dlo{transparent=#we{light=L}=We}) ->
     %% This happens when dragging a light in Body selection mode.
     %% (Not area light.)
     prepare_light(L, We, none);
-scene_lights_fun(#dlo{drag=Drag,src_we=We0}=D) ->
+scene_lights_fun(#dlo{src_we=We0}=D) ->
     %% Area lights handled here in all selection modes +
     %% other lights in vertex/edge/face modes.
     We = case We0 of
@@ -829,10 +829,7 @@ scene_lights_fun(#dlo{drag=Drag,src_we=We0}=D) ->
 		 %% (which is the whole shape).
 		 We0
 	 end,
-    M = case Drag of
-	    {matrix,_Tr,_M0,M1} -> M1;
- 	    _ -> none
- 	end,
+    M = wings_drag:get_drag_matrix(D),
     prepare_light(We#we.light, We, M).
 
 prepare_light(#light{type=ambient,ambient=Amb}=L, _We, _M) ->
@@ -853,21 +850,14 @@ prepare_light(#light{type=area}=L, We, M) ->
     prepare_arealight(L, Apde, M).
 
 prepare_arealight(#light{type=area}=L, {Pos0,{0.0,0.0,0.0},_}, M) ->
-    {X,Y,Z} = case M of
-                  none -> Pos0;
-                  _ -> mul_point(M, Pos0)
-              end,
-    #{light=>L, pos=>{X,Y,Z,1.0}};
+    {X,Y,Z} = mul_point(M, Pos0),
+    #{light=>L,pos=>{X,Y,Z,1.0}};
 prepare_arealight(#light{type=area}=L, {Pos0,Dir0,Exp}, M) ->
-    {{X,Y,Z},Dir} =
-	case M of
-	    none -> {Pos0,Dir0};
-	    _ ->
-		Pos = mul_point(M, Pos0),
-		Aim = mul_point(M, e3d_vec:add(Dir0, Pos0)),
-		{Pos,e3d_vec:sub(Aim, Pos)}
-	end,
-    #{light=>L, pos=>{X,Y,Z,1.0}, dir=>Dir, exp=>Exp}.
+    Pos = mul_point(M, Pos0),
+    Aim = mul_point(M, e3d_vec:add(Dir0, Pos0)),
+    Dir = e3d_vec:sub(Aim, Pos),
+    {X,Y,Z} = Pos,
+    #{light=>L,pos=>{X,Y,Z,1.0},dir=>Dir,exp=>Exp}.
 
 setup_light(#{light:=#light{type=ambient,ambient=Amb}}) ->
     gl:lightModelfv(?GL_LIGHT_MODEL_AMBIENT, Amb),
