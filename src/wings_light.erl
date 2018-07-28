@@ -451,10 +451,24 @@ update_dynamic(#dlo{src_we=We0}=D, Vtab0) ->
     List = update_1(We, D),
     D#dlo{work=List,src_we=We}.
 
-update_matrix(#dlo{src_we=We0}=D, Matrix) ->
-    We = wings_we:transform_vs(Matrix, We0),
+update_matrix(#dlo{src_we=#we{light=Light}=We0}=D, Matrix) ->
+    We = case Light of
+             #light{type=spot,aim=Aim0} ->
+                 %% When drawing this spotlight, it will be translated
+                 %% using the matrix Matrix. Therefore, we can't translate
+                 %% the #we{} using the matrix, because that would be a
+                 %% double translation. To still get the spotlight pointing
+                 %% correctly at the aim point, we can instead move the
+                 %% aim point. The aim point should be moved in the opposite
+                 %% direction of the translation in the matrix.
+                 Trans = e3d_mat:mul_point(Matrix, e3d_vec:zero()),
+                 Aim = e3d_vec:sub(Aim0, Trans),
+                 We0#we{light=Light#light{aim=Aim}};
+             #light{} ->
+                 We0
+         end,
     List = update_1(We, D),
-    D#dlo{work=List,sel=none,transparent=We}.
+    D#dlo{work=List,sel=none}.
 
 update(#dlo{work=none,src_we=#we{light=#light{}}=We}=D) ->
     List = update_1(We, D),
@@ -808,13 +822,7 @@ camera_infinite_2_1() ->
 	   aim      = {-0.71,-0.71,0.0}
 	  }.
 
-scene_lights_fun(#dlo{transparent=#we{light=L}=We}) ->
-    %% This happens when dragging a light in Body selection mode.
-    %% (Not area light.)
-    prepare_light(L, We, none);
 scene_lights_fun(#dlo{src_we=We0}=D) ->
-    %% Area lights handled here in all selection modes +
-    %% other lights in vertex/edge/face modes.
     We = case We0 of
 	     #we{light=#light{type=area}} ->
 		 %% For an area light it looks better in vertex/edge/face
@@ -835,14 +843,14 @@ scene_lights_fun(#dlo{src_we=We0}=D) ->
 prepare_light(#light{type=ambient,ambient=Amb}=L, _We, _M) ->
     gl:lightModelfv(?GL_LIGHT_MODEL_AMBIENT, Amb),
     #{light=>L};
-prepare_light(#light{type=infinite,aim=Aim}=L, We, _M) ->
-    {X,Y,Z} = e3d_vec:norm_sub(light_pos(We), Aim),
+prepare_light(#light{type=infinite,aim=Aim}=L, We, M) ->
+    {X,Y,Z} = e3d_vec:norm_sub(light_pos(We, M), Aim),
     #{light=>L, pos=>{X,Y,Z,0.0}};
-prepare_light(#light{type=point}=L, We, _M) ->
-    {X,Y,Z} = light_pos(We),
+prepare_light(#light{type=point}=L, We, M) ->
+    {X,Y,Z} = light_pos(We, M),
     #{light=>L, pos=>{X,Y,Z,1.0}};
-prepare_light(#light{type=spot,aim=Aim}=L, We, _M) ->
-    Pos = {X,Y,Z} = light_pos(We),
+prepare_light(#light{type=spot,aim=Aim}=L, We, M) ->
+    Pos = {X,Y,Z} = light_pos(We, M),
     Dir = e3d_vec:norm_sub(Aim, Pos),
     #{light=>L, pos=>{X,Y,Z,1.0}, dir=>Dir};
 prepare_light(#light{type=area}=L, We, M) ->
@@ -904,6 +912,10 @@ setup_color(Lnum, #light{diffuse=Diff,ambient=Amb,specular=Spec}) ->
 setup_attenuation(Lnum, #light{lin_att=Lin,quad_att=Quad}) ->
     gl:lightf(Lnum, ?GL_LINEAR_ATTENUATION, Lin),
     gl:lightf(Lnum, ?GL_QUADRATIC_ATTENUATION, Quad).
+
+
+light_pos(We, Matrix) ->
+    e3d_mat:mul_point(Matrix, light_pos(We)).
 
 light_pos(#we{light=#light{type=area}}=We) ->
     {Pos,_,_} = arealight_posdirexp(We),

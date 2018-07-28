@@ -285,7 +285,7 @@
                     | wings_drag:drag()
                     | wings_tweak:drag()
                     | {matrix,_,_,e3d_mat:matrix()}, %For dragging.
-         transparent=false :: boolean() | #we{}, %Object includes transparancy.
+         transparent=false :: boolean(),        %Object includes transparancy.
          open=false :: boolean(),               %Open (has hole).
 
 	 %% List of display lists known to be needed only based

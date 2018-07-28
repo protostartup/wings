@@ -933,9 +933,6 @@ view_changed(#drag{flags=Flags}=Drag0) ->
 	    end
     end.
 
-view_changed_fun(#dlo{drag={matrix,Tr,_,_},transparent=#we{}=We}=D, _) ->
-    Id = e3d_mat:identity(),
-    {D#dlo{src_we=We,drag={matrix,Tr,Id,Id}},[]};
 view_changed_fun(#dlo{drag={matrix,Tr,_,Mtx}}=D, _) ->
     {D#dlo{drag={matrix,Tr,Mtx,Mtx}},[]};
 view_changed_fun(#dlo{drag=#do{tr_fun=F0}=Do,src_we=We}=D, _) ->
@@ -1295,9 +1292,11 @@ default_drag_fun(Move) ->
 			 motion_update_fun(D, Move)
 		 end, []).
 
-motion_update_fun(#dlo{src_we=We,drag={matrix,Tr,Mtx0,_}}=D, Move) when ?IS_LIGHT(We) ->
-    Mtx = Tr(Mtx0, Move),
-    wings_light:update_matrix(D, Mtx);
+motion_update_fun(#dlo{src_we=We,drag={matrix,Trans,Matrix0,_}}=D0, Move)
+  when ?IS_LIGHT(We) ->
+    Matrix = Trans(Matrix0, Move),
+    D = wings_light:update_matrix(D0, Matrix),
+    D#dlo{drag={matrix,Trans,Matrix0,Matrix}};
 motion_update_fun(#dlo{drag={matrix,Trans,Matrix0,_}}=D, Move) ->
     Matrix = Trans(Matrix0, Move),
     D#dlo{drag={matrix,Trans,Matrix0,Matrix}};
@@ -1383,12 +1382,6 @@ normalize(Move, #drag{mode_fun=ModeFun,mode_data=ModeData,
     St#st{shapes=Shs}.
 
 normalize_fun(#dlo{drag=none}=D, _Move, Shs) -> {D,Shs};
-normalize_fun(#dlo{drag={matrix,_,_,_},transparent=#we{id=Id}=We,
-		   proxy_data=PD}=D0, _Move, Shs0) when ?IS_LIGHT(We) ->
-    Shs = gb_trees:update(Id, We, Shs0),
-    D = D0#dlo{work=none,smooth=none,drag=none,src_we=We,transparent=false,
-	   proxy_data=wings_proxy:invalidate(PD, dl)},
-    {wings_draw:changed_we(D, D),Shs};
 normalize_fun(#dlo{drag={matrix,_,_,Matrix},src_we=#we{id=Id}=We0,
 		   proxy_data=PD}=D0,
 	      _Move, Shs0) ->
