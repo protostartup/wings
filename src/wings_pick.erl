@@ -957,41 +957,46 @@ dlo_pick(St, OneHit, Matrices) ->
 	    usort(Hits0)
     end.
 
-do_dlo_pick(#dlo{src_we=#we{perm=Perm}}=D, _St, _OneHit, _Ms, Acc)
+dlo_src(#dlo{src_we=We,ns=Ns,mirror=MM}) ->
+    #dlo_src{we=We,ns=Ns,mirror=MM}.
+
+do_dlo_pick(#dlo{vab=Vab0}=D0, St, OneHit, Ms, Acc) ->
+    Src = dlo_src(D0),
+    Vab = wings_draw_setup:work(Vab0, Src, St),
+    D = D0#dlo{vab=Vab},
+    do_dlo_pick_1(D, St, OneHit, Ms, Acc).
+
+do_dlo_pick_1(#dlo{src_we=#we{perm=Perm}}=D, _St, _OneHit, _Ms, Acc)
   when ?IS_NOT_SELECTABLE(Perm) ->
     {D,Acc};
-do_dlo_pick(D=#dlo{vab=none}, St, OneHit, Ms, Acc) ->
-    do_dlo_pick(wings_draw_setup:work(D, St), St, OneHit, Ms, Acc);
-do_dlo_pick(D=#dlo{vab=#vab{face_vs=none}}, St, OneHit, Ms, Acc) ->
-    do_dlo_pick(wings_draw_setup:work(D, St), St, OneHit, Ms, Acc);
-do_dlo_pick(#dlo{mirror=none,src_we=#we{id=Id}=We}=D, _, OneHit, _Ms, Acc)
+do_dlo_pick_1(#dlo{mirror=none,src_we=#we{id=Id}=We}=D, _, OneHit, _Ms, Acc)
   when ?IS_AREA_LIGHT(We) ->
     wpc_pick:cull(false),
-    Res = do_dlo_pick_0(Id, D, OneHit, Acc),
+    Res = do_dlo_pick_2(Id, D, OneHit, Acc),
     wpc_pick:cull(true),
     Res;
-do_dlo_pick(#dlo{mirror=none,open=Open,src_we=#we{id=Id}}=D, _, OneHit, _Ms, Acc) ->
+do_dlo_pick_1(#dlo{mirror=none,open=Open,src_we=#we{id=Id}}=D, _, OneHit, _Ms, Acc) ->
     case wings_pref:get_value(show_backfaces) of
         true when Open -> wpc_pick:front_face(cw);
         _ -> wpc_pick:front_face(ccw)
     end,
-    do_dlo_pick_0(Id, D, OneHit, Acc);
-do_dlo_pick(#dlo{mirror=Matrix,open=Open,src_we=#we{id=Id}}=D0, _, OneHit, Ms, Acc0) ->
+    do_dlo_pick_2(Id, D, OneHit, Acc);
+do_dlo_pick_1(#dlo{mirror=Matrix,open=Open,src_we=#we{id=Id}}=D0, _, OneHit, Ms, Acc0) ->
     case wings_pref:get_value(show_backfaces) of
         true when Open ->
             wpc_pick:front_face(cw),
-            {D1,Acc1} = do_dlo_pick_0(Id, D0, OneHit, Acc0);
+            {D1,Acc1} = do_dlo_pick_2(Id, D0, OneHit, Acc0);
         _ ->
-            {D1,Acc1} = do_dlo_pick_0(Id, D0, OneHit, Acc0),
+            {D1,Acc1} = do_dlo_pick_2(Id, D0, OneHit, Acc0),
             wpc_pick:front_face(cw)
     end,
     set_pick_matrix(Ms, Matrix),
-    {D,Acc} = do_dlo_pick_0(-Id, D1, OneHit, Acc1),
+    {D,Acc} = do_dlo_pick_2(-Id, D1, OneHit, Acc1),
     wpc_pick:front_face(ccw),
     set_pick_matrix(Ms),
     {D,Acc}.
 
-do_dlo_pick_0(Id, #dlo{vab=#vab{data=VsBin,face_vs={Stride,_},face_map=Map0}}=D0,
+do_dlo_pick_2(Id, #dlo{vab=#vab{data=VsBin,face_vs={Stride,_},face_map=Map0}}=D0,
 	      OneHit, Acc0) ->
     Vs = {Stride,VsBin},
     case wpc_pick:faces(Vs, OneHit) of
@@ -1005,22 +1010,22 @@ do_dlo_pick_0(Id, #dlo{vab=#vab{data=VsBin,face_vs={Stride,_},face_map=Map0}}=D0
 		    {D0,Acc0};
 		_ ->
 		    {D,Map} = dlo_tri_map(D0, Map0),
-		    Acc = do_dlo_pick_1([Hit0], Map, Id, []),
+		    Acc = do_dlo_pick_3([Hit0], Map, Id, []),
 		    {D,{Depth,Acc}}
 	    end;
 	RawHits ->
 	    %% OneHit is false - all hits are returned.
 	    {D,Map} = dlo_tri_map(D0, Map0),
-	    {D,do_dlo_pick_1(RawHits, Map, Id, Acc0)}
+	    {D,do_dlo_pick_3(RawHits, Map, Id, Acc0)}
     end.
 
-do_dlo_pick_1([H|Hits], [{Face,{Start,Num}}|_]=T, Id, Acc)
+do_dlo_pick_3([H|Hits], [{Face,{Start,Num}}|_]=T, Id, Acc)
   when Start =< H, H < Start+Num ->
-    do_dlo_pick_1(Hits, T, Id, [{Id,Face}|Acc]);
-do_dlo_pick_1([_|_]=Hits, [_|T], Id, Acc) ->
-    do_dlo_pick_1(Hits, T, Id, Acc);
-do_dlo_pick_1([], [_|_], _, Acc) -> Acc;
-do_dlo_pick_1([], [], _, Acc) -> Acc.
+    do_dlo_pick_3(Hits, T, Id, [{Id,Face}|Acc]);
+do_dlo_pick_3([_|_]=Hits, [_|T], Id, Acc) ->
+    do_dlo_pick_3(Hits, T, Id, Acc);
+do_dlo_pick_3([], [_|_], _, Acc) -> Acc;
+do_dlo_pick_3([], [], _, Acc) -> Acc.
 
 dlo_tri_map(#dlo{tri_map=none}=D, Map0) ->
     Map1 = keysort(2, array:sparse_to_orddict(Map0)),

@@ -294,6 +294,16 @@
          needed=[] :: [atom()]
 	}).
 
+%% This record holds a copy of the geometry and selection corresponding
+%% to the display lists in the #dlo{} record.
+
+-record(dlo_src,
+        {
+          we :: #we{},
+          ns :: wings_draw:normals(),
+          mirror :: 'none' | e3d_mat:matrix()
+        }).
+
 %% Vertex Buffer Objects. The name is #vab{} for historical reasons.
 -record(vab, 
 	{

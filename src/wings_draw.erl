@@ -324,16 +324,23 @@ update_materials(D, St) ->
        true -> St
     end.
 
+dlo_src(#dlo{src_we=We,ns=Ns,mirror=MM}) ->
+    #dlo_src{we=We,ns=Ns,mirror=MM}.
+
 update_fun_2(light, D, _) ->
     wings_light:update(D);
-update_fun_2(work, #dlo{work=none}=D0, St) ->
-    D  = wings_draw_setup:work(D0, St),
-    Dl = draw_flat_faces(D, St),
-    D#dlo{work=Dl};
-update_fun_2(smooth, #dlo{smooth=none,proxy=false}=D0, St) ->
-    D  = wings_draw_setup:smooth(D0, St),
-    {List,Tr} = draw_smooth_faces(D, St),
-    D#dlo{smooth=List,transparent=Tr};
+update_fun_2(work, #dlo{vab=Vab0,work=none}=D0, St) ->
+    D = update_normals(D0),
+    Src = dlo_src(D),
+    Vab = wings_draw_setup:work(Vab0, Src, St),
+    Dl = draw_flat_faces(Vab, St),
+    D#dlo{vab=Vab,work=Dl};
+update_fun_2(smooth, #dlo{vab=Vab0,smooth=none,proxy=false}=D0, St) ->
+    D = update_normals(D0),
+    Src = dlo_src(D),
+    Vab = wings_draw_setup:smooth(Vab0, Src, St),
+    {List,Tr} = draw_smooth_faces(Vab, St),
+    D#dlo{vab=Vab,smooth=List,transparent=Tr};
 update_fun_2(smooth, #dlo{proxy=true}=D0, St) ->
     wings_proxy:smooth(D0,St);
 update_fun_2({vertex,_PtSize}, #dlo{vs=none,src_we=We}=D, _) ->
@@ -669,8 +676,9 @@ split_faces(#dlo{needed=Need}=D0, Ftab0, Fs0, St) ->
 	    D1 = split_new_normals(StaticFtab, D0),
 
 	    StaticPlan = wings_draw_setup:prepare(StaticFtab, D1, St),
-	    D = wings_draw_setup:flat_faces(StaticPlan, D1),
-	    Dl = draw_flat_faces(D, St),
+            Src = dlo_src(D1),
+            Vab = wings_draw_setup:flat_faces(StaticPlan, Src),
+            Dl = draw_flat_faces(Vab, St),
 	    {[Dl],D1,StaticFtab,DynFtab}
     end.
 
@@ -759,9 +767,10 @@ update_dynamic(#dlo{src_we=We0,
     dynamic_vs(D).
 
 dynamic_faces(#dlo{work=[Work|_],
-		   split=#split{dyn_plan=DynPlan,orig_st=St}}=D0) ->
-    D = wings_draw_setup:flat_faces(DynPlan, D0),
-    Dl = draw_flat_faces(D, St),
+		   split=#split{dyn_plan=DynPlan,orig_st=St}}=D) ->
+    Src = dlo_src(D),
+    Vab = wings_draw_setup:flat_faces(DynPlan, Src),
+    Dl = draw_flat_faces(Vab, St),
     D#dlo{work=[Work,Dl],vab=none};
 dynamic_faces(#dlo{work=none}=D) -> D.
 
